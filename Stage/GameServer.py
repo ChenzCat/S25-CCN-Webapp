@@ -100,13 +100,6 @@ def seedInitialCloud(slots, initialRings=3):
             })
     return cloud
 
-
-def findNearestFreeSlot(slots, rx_new, ry_new):
- # how far out from center we are
-    dist     = math.hypot(rx_new, ry_new)
-    ring     = int(round(dist / R_STEP))
-    max_local = R_STEP * 2      # you can tweak this (2× slot spacing)
-
 def findNearestFreeSlot(slots, rxNew, ryNew):
     """
     Look only on ring, ring-1, ring+1 (in pixel‐based ring units),
@@ -242,7 +235,7 @@ def removeFloatingClusters(cloud, worldPosFn, score):
 
 
 # --- Physics Helpers ---
-def handle_wall_and_ceiling_bounce(b):
+def handleWallAndCeilingBounce(b):
     # walls
     if b.x < BUBBLE_RADIUS or b.x > SCREEN_W - BUBBLE_RADIUS:
         b.vx *= -1
@@ -254,7 +247,7 @@ def handle_wall_and_ceiling_bounce(b):
         b.y = BUBBLE_RADIUS
 
 
-def should_reset_launcher(b):
+def shouldResetLauncher(b):
     return b.bounce_count > 3 or b.y > SCREEN_H
 
 
@@ -305,13 +298,20 @@ def initGame():
     angle = 0.0
     angVel = 5.0
     score = 0
-    next_b = Bubble(CENTER_X, LAUNCHER_Y, random.choice(COLORS))
+    nextB = Bubble(CENTER_X, LAUNCHER_Y, random.choice(COLORS))
     firing = False
     running = True
-    return slots, cloud, falling, angle, angVel, score, next_b, firing, running
+    initialCount = random.randint(3,7)
+    activeColors = [e["color"] for e in cloud] or COLORS
+    ammoQueue    = [random.choice(activeColors) for _ in range(initialCount)]
+
+    # nextB should be the first color in the queue
+    nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
+
+    return slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue  
 
 
-def process_input(next_b, firing, cloud):
+def processInput(nextB, firing, cloud, ammoQueue):
     running = True
     for ev in pygame.event.get():
         if ev.type == pygame.QUIT:
@@ -319,50 +319,56 @@ def process_input(next_b, firing, cloud):
         elif (ev.type == pygame.KEYDOWN and ev.key == pygame.K_SPACE) \
              or (ev.type == pygame.MOUSEBUTTONDOWN):
             if not firing:
-                next_b.y = LAUNCHER_Y
-                active = {e["color"] for e in cloud}
-                if next_b.color not in active and active:
-                    next_b.color = random.choice(list(active))
+                nextB.y = LAUNCHER_Y
+                active = [e["color"] for e in cloud]
+                if active and nextB.color not in active:
+                    nextB.color = random.choice(active)
                 mx, my = pygame.mouse.get_pos()
-                dx, dy = mx - next_b.x, my - next_b.y
+                dx, dy = mx - nextB.x, my - nextB.y
                 mag = math.hypot(dx, dy)
                 if mag:
-                    next_b.vx = dx / mag * LAUNCH_SPEED
-                    next_b.vy = dy / mag * LAUNCH_SPEED
+                    nextB.vx = dx / mag * LAUNCH_SPEED
+                    nextB.vy = dy / mag * LAUNCH_SPEED
                     firing = True
-    return running, firing, next_b
+    # ammoQueue is unchanged here
+    return running, firing, nextB, ammoQueue
 
 
-def handle_keyboard(next_b, firing, dt):
+def handleKeyboard(nextB, firing, dt):
     keys = pygame.key.get_pressed()
     if keys[pygame.K_a]:
-        next_b.x = max(BUBBLE_RADIUS, next_b.x - 5)
+        nextB.x = max(BUBBLE_RADIUS, nextB.x - 5)
     if keys[pygame.K_d]:
-        next_b.x = min(SCREEN_W - BUBBLE_RADIUS, next_b.x + 5)
+        nextB.x = min(SCREEN_W - BUBBLE_RADIUS, nextB.x + 5)
     if not firing:
-        next_b.y = LAUNCHER_Y
-    return next_b
+        nextB.y = LAUNCHER_Y
+    return nextB
 
 
 def updateProjectile(
-    next_b, firing, slots, cloud, falling,
-    angle, angVel, score
+    nextB, firing, slots, cloud, falling,
+    angle, angVel, score, ammoQueue                
 ):
-    next_b.update()
-    handle_wall_and_ceiling_bounce(next_b)
+    
+    nextB.update()
+    handleWallAndCeilingBounce(nextB)
 
-    if should_reset_launcher(next_b):
+    if shouldResetLauncher(nextB):
         firing = False
-        next_b = Bubble(CENTER_X, LAUNCHER_Y, next_b.color)
-        return firing, next_b, slots, cloud, falling, angVel, score
 
-    if check_core_collision(next_b, CENTER_X, CENTER_Y):
+        xtB = Bubble(CENTER_X, LAUNCHER_Y, nextB.color)
+        nextB.x, nextB.y      = CENTER_X, LAUNCHER_Y
+        nextB.vx, nextB.vy    = 0, 0
+        nextB.bounce_count    = 0
+        return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
+
+    if check_core_collision(nextB, CENTER_X, CENTER_Y):
         print(f"Game Over! Hit the core. Final Score: {score}")
         pygame.time.wait(2000)
-        return False, next_b, slots, cloud, falling, angVel, score
+        return False, nextB, slots, cloud, falling, angVel, score
 
     cloud, impulse = attach_to_cloud(
-        next_b, cloud, slots, angle, CENTER_X, CENTER_Y
+        nextB, cloud, slots, angle, CENTER_X, CENTER_Y
     )
     if impulse:
         angVel += impulse
@@ -383,16 +389,22 @@ def updateProjectile(
     
         spawnFalling(falling, extraFall, angle, CENTER_X, CENTER_Y)
 
+        # only consume one ammo if NOTHING was removed
+        if not toFall and not extraFall:
+            ammoQueue.pop(0)
+
+        # if we ran out of ammo, refill
+        if not ammoQueue:
+            newCount     = random.randint(3,7)
+            activeColors = [e["color"] for e in cloud] or COLORS
+            ammoQueue    = [random.choice(activeColors) for _ in range(newCount)]
 
         firing = False
-        next_b = Bubble(CENTER_X, LAUNCHER_Y, random.choice(COLORS))
+        nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
+    return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
 
-
-    return firing, next_b, slots, cloud, falling, angVel, score
-
-
-def update_falling(falling, dt):
+def updateFalling(falling, dt):
     for b in falling[:]:
         b.vy += 400 * dt
         b.x += b.vx * dt
@@ -408,9 +420,7 @@ def update_rotation(angle, angVel):
     return angle, angVel
 
 
-def draw(
-    screen, cloud, falling, next_b, angle
-):
+def draw(screen, cloud, falling, nextB, angle, ammoQueue):
     screen.fill((30, 30, 30))
 
     for b in falling:
@@ -435,42 +445,58 @@ def draw(
     pygame.draw.line(
         screen,
         (200, 200, 200),
-        (next_b.x - 20, LAUNCHER_Y + 20),
-        (next_b.x + 20, LAUNCHER_Y + 20),
+        (nextB.x - 20, LAUNCHER_Y + 20),
+        (nextB.x + 20, LAUNCHER_Y + 20),
         4
     )
-    next_b.draw(screen)
+    
+    nextB.draw(screen)
+    previewR = BUBBLE_RADIUS // 2
+    spacing  = previewR * 2 + 4
+    for i, col in enumerate(ammoQueue):
+        px = nextB.x + (i+1) * spacing
+        py = LAUNCHER_Y
+        pygame.draw.circle(screen, col, (int(px),int(py)), previewR)
     pygame.display.flip()
 
 
 # --- Main ---
 def main():
     screen, clock = init_pygame()
-    (
-        slots, cloud, falling,
-        angle, angVel, score,
-        next_b, firing, running
-    ) = initGame()
 
+    # 1) Initialize everything once — note: 'slots' not 'lots'
+    slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue = initGame()
+
+    # 2) Main loop
     while running:
         dt = clock.tick(60) / 1000.0
 
-        running, firing, next_b = process_input(next_b, firing, cloud)
-        next_b = handle_keyboard(next_b, firing, dt)
+        # — input —
+        running, firing, nextB, ammoQueue = processInput(nextB, firing, cloud, ammoQueue)
 
+        # — move the preview bubble left/right —
+        nextB = handleKeyboard(nextB, firing, dt)
+
+        # — ensure preview color stays valid —
+        if not firing:
+            activeColors = [e["color"] for e in cloud]
+            if activeColors and nextB.color not in activeColors:
+                nextB.color = random.choice(activeColors)
+
+        # — firing logic —
         if firing:
-            (
-                firing, next_b, slots,
-                cloud, falling, angVel, score
-            ) = updateProjectile(
-                next_b, firing, slots,
+            firing, nextB, slots, cloud, falling, angVel, score, ammoQueue = updateProjectile(
+                nextB, firing, slots,
                 cloud, falling, angle,
-                angVel, score
+                angVel, score, ammoQueue
             )
 
-        falling = update_falling(falling, dt)
+        # — update falling bubbles & rotation —
+        falling = updateFalling(falling, dt)
         angle, angVel = update_rotation(angle, angVel)
-        draw(screen, cloud, falling, next_b, angle)
+
+        # — draw everything each frame —
+        draw(screen, cloud, falling, nextB, angle, ammoQueue)
 
     pygame.quit()
 
