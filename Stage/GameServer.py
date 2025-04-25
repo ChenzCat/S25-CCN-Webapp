@@ -12,6 +12,7 @@ R_STEP = BUBBLE_DIAM
 LAUNCH_SPEED = 12
 CLOUD_RADIUS = 400
 CORE_RADIUS = 26
+penaltyBalls = []
 
 ANGULAR_DAMPING = 0.98
 LAUNCHER_Y = SCREEN_H - 50
@@ -28,7 +29,6 @@ GOLDEN_COLOR = (212, 175, 55)
 # Precompute cloud center
 CENTER_X = SCREEN_W // 2
 CENTER_Y = SCREEN_H // 3
-
 
 # --- Bubble Class ---
 class Bubble:
@@ -92,6 +92,10 @@ def seedInitialCloud(slots, initialRings=3):
     for slot in slots:
         q, r = slot["q"], slot["r"]
         s      = -q - r
+
+        if q == 0 and r == 0:
+            continue
+
         if max(abs(q), abs(r), abs(s)) <= initialRings:
             slot["occupied"] = True
             cloud.append({
@@ -293,6 +297,10 @@ def init_pygame():
 def initGame():
     gridRadius = CLOUD_RADIUS // R_STEP
     slots      = createSlots(gridRadius)
+    for slot in slots:
+        if slot["q"] == 0 and slot["r"] == 0:
+            slot["occupied"] = True
+            break
     cloud = seedInitialCloud(slots, initialRings=3)
     falling = []
     angle = 0.0
@@ -365,7 +373,7 @@ def updateProjectile(
     if check_core_collision(nextB, CENTER_X, CENTER_Y):
         print(f"Game Over! Hit the core. Final Score: {score}")
         pygame.time.wait(2000)
-        return False, nextB, slots, cloud, falling, angVel, score
+        return False, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
     cloud, impulse = attach_to_cloud(
         nextB, cloud, slots, angle, CENTER_X, CENTER_Y
@@ -398,6 +406,7 @@ def updateProjectile(
             newCount     = random.randint(3,7)
             activeColors = [e["color"] for e in cloud] or COLORS
             ammoQueue    = [random.choice(activeColors) for _ in range(newCount)]
+            spawnPenaltyBalls(cloud, slots)
 
         firing = False
         nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
@@ -412,6 +421,56 @@ def updateFalling(falling, dt):
         if b.y - BUBBLE_RADIUS > SCREEN_H:
             falling.remove(b)
     return falling
+
+def spawnPenaltyBalls(cloud, slots, speed=LAUNCH_SPEED):
+    """
+    Pick 3–9 balls from the current cloud colors,
+    launch them from the circle perimeter inward.
+    """
+    count = random.randint(3, 9)
+    active = [e["color"] for e in cloud] or COLORS
+    for _ in range(count):
+        color = random.choice(active)
+        theta = random.uniform(0, 2*math.pi)
+        x0 = CENTER_X + math.cos(theta) * CLOUD_RADIUS
+        y0 = CENTER_Y + math.sin(theta) * CLOUD_RADIUS
+        dx, dy = CENTER_X - x0, CENTER_Y - y0
+        mag = math.hypot(dx, dy) or 1
+        b = Bubble(x0, y0, color)
+        b.vx = dx/mag * speed
+        b.vy = dy/mag * speed
+        penaltyBalls.append(b)
+
+
+def updatePenaltyBalls(slots, cloud, angle):
+    """
+    Move penaltyBalls toward center, and attach them to the cloud
+    on first collision (no cluster removal).
+    """
+    for b in penaltyBalls[:]:
+        b.update()
+        # check collision against every existing bubble in cloud
+        for entry in cloud:
+            sx, sy = worldPos(entry, angle, CENTER_X, CENTER_Y)
+            if math.hypot(b.x - sx, b.y - sy) < BUBBLE_DIAM:
+                # attach without clearing clusters
+                rel_x, rel_y = b.x - CENTER_X, b.y - CENTER_Y
+                sin_a, cos_a = math.sin(-angle), math.cos(-angle)
+                rx_new = rel_x*cos_a - rel_y*sin_a
+                ry_new = rel_x*sin_a + rel_y*cos_a
+                slot = findNearestFreeSlot(slots, rx_new, ry_new)
+                if slot:
+                    slot["occupied"] = True
+                    cloud.append({"slot": slot, "color": b.color})
+                break
+        else:
+            # not collided yet
+            continue
+        # if we did collide, remove from penaltyBalls
+        penaltyBalls.remove(b)
+
+
+
 
 
 def update_rotation(angle, angVel):
@@ -435,13 +494,34 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
             BUBBLE_RADIUS
         )
 
-    pygame.draw.circle(
-        screen,
-        GOLDEN_COLOR,
-        (CENTER_X, CENTER_Y),
-        BUBBLE_RADIUS * 2
-    )
-    # launcher tube
+    # Core
+
+    #pygame.draw.circle(
+        #screen,
+        #GOLDEN_COLOR,
+        #(CENTER_X, CENTER_Y),
+        #BUBBLE_RADIUS * 2
+    #)
+
+    # draw a transparent hexagon at the core
+    hexRadius = CORE_RADIUS
+    diameter = hexRadius * 2
+    hexSurf = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+    hexColor = (*GOLDEN_COLOR, 128)
+    points = []
+    for i in range(6):
+        ang = math.radians(60 * i)
+        x = hexRadius + math.cos(ang) * hexRadius
+        y = hexRadius + math.sin(ang) * hexRadius
+        points.append((x, y))
+    pygame.draw.polygon(hexSurf, hexColor, points)
+    # 3) rotate the surface by –angle (convert to degrees)
+    rotSurf = pygame.transform.rotate(hexSurf, -math.degrees(angle))
+    # 4) center it on SCREEN
+    rect = rotSurf.get_rect(center=(CENTER_X, CENTER_Y))
+    screen.blit(rotSurf, rect)
+
+    # Launcher Spot
     pygame.draw.line(
         screen,
         (200, 200, 200),
@@ -453,10 +533,14 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
     nextB.draw(screen)
     previewR = BUBBLE_RADIUS // 2
     spacing  = previewR * 2 + 4
-    for i, col in enumerate(ammoQueue):
+    for i, col in enumerate(ammoQueue[1:]):
         px = nextB.x + (i+1) * spacing
         py = LAUNCHER_Y
-        pygame.draw.circle(screen, col, (int(px),int(py)), previewR)
+        pygame.draw.circle(screen, col, (int(px), int(py)), previewR)
+
+    for b in penaltyBalls:
+        b.draw(screen)
+
     pygame.display.flip()
 
 
@@ -494,7 +578,7 @@ def main():
         # — update falling bubbles & rotation —
         falling = updateFalling(falling, dt)
         angle, angVel = update_rotation(angle, angVel)
-
+        updatePenaltyBalls(slots, cloud, angle)
         # — draw everything each frame —
         draw(screen, cloud, falling, nextB, angle, ammoQueue)
 
