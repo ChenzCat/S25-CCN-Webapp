@@ -11,7 +11,7 @@ R_STEP = BUBBLE_DIAM
 
 LAUNCH_SPEED = 12
 CLOUD_RADIUS = 400
-CORE_RADIUS = 26
+CORE_RADIUS = 20
 penaltyBalls = []
 
 ANGULAR_DAMPING = 0.98
@@ -29,6 +29,68 @@ GOLDEN_COLOR = (212, 175, 55)
 # Precompute cloud center
 CENTER_X = SCREEN_W // 2
 CENTER_Y = SCREEN_H // 3
+
+# Sound Engine
+pygame.mixer.init()
+#SHATTER_SOUND = pygame.mixer.Sound('assets/sounds/shatter.wav')
+
+
+# --- Shatter Class ---
+class ShatterParticle:
+    def __init__(self, pos, vel, color, lifetime=1.0):
+        self.x, self.y = pos
+        self.vx, self.vy = vel
+        self.color = color
+        self.life = lifetime
+
+    def update(self, dt):
+        self.life -= dt
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+
+    def draw(self, surf):
+        if self.life > 0:
+            r = int(CORE_RADIUS * (self.life))  # shrink over time
+            pygame.draw.circle(surf, self.color, (int(self.x), int(self.y)), max(1,r))
+
+shatterParticles = []
+
+
+def spawnShatter():
+    #SHATTER_SOUND.play()
+    for i in range(6):
+        ang = math.radians(60 * i + 30)
+        x = CENTER_X + math.cos(ang) * CORE_RADIUS
+        y = CENTER_Y + math.sin(ang) * CORE_RADIUS
+        dir_ang = random.uniform(ang - 0.5, ang + 0.5)
+        speed = random.uniform(200, 300)
+        vx, vy = math.cos(dir_ang) * speed, math.sin(dir_ang) * speed
+        shatterParticles.append(ShatterParticle((x, y), (vx, vy), GOLDEN_COLOR, 1.0))
+
+def updateShatterParticles(dt):
+    for p in shatterParticles[:]:
+        p.update(dt)
+        if p.life <= 0:
+            shatterParticles.remove(p)
+
+def drawCore(surf, angle):
+    hexR = CORE_RADIUS
+    diam = hexR * 2
+    tmp = pygame.Surface((diam, diam), pygame.SRCALPHA)
+    col = (*GOLDEN_COLOR, 128)
+    pts = [(hexR + math.cos(math.radians(60*i)) * hexR,
+            hexR + math.sin(math.radians(60*i)) * hexR)
+           for i in range(6)]
+    pygame.draw.polygon(tmp, col, pts)
+    rot = pygame.transform.rotate(tmp, -math.degrees(angle))
+    rect = rot.get_rect(center=(CENTER_X, CENTER_Y))
+    surf.blit(rot, rect)
+
+def handleCoreHit(b):
+    if math.hypot(b.x - CENTER_X, b.y - CENTER_Y) < CORE_RADIUS:
+        spawnShatter()
+        return True
+    return False
 
 # --- Bubble Class ---
 class Bubble:
@@ -370,11 +432,11 @@ def updateProjectile(
         nextB.bounce_count    = 0
         return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
-    if check_core_collision(nextB, CENTER_X, CENTER_Y):
+    if handleCoreHit(nextB):
         print(f"Game Over! Hit the core. Final Score: {score}")
         pygame.time.wait(2000)
         return False, nextB, slots, cloud, falling, angVel, score, ammoQueue
-
+    
     cloud, impulse = attach_to_cloud(
         nextB, cloud, slots, angle, CENTER_X, CENTER_Y
     )
@@ -503,23 +565,11 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
         #BUBBLE_RADIUS * 2
     #)
 
-    # draw a transparent hexagon at the core
-    hexRadius = CORE_RADIUS
-    diameter = hexRadius * 2
-    hexSurf = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
-    hexColor = (*GOLDEN_COLOR, 128)
-    points = []
-    for i in range(6):
-        ang = math.radians(60 * i)
-        x = hexRadius + math.cos(ang) * hexRadius
-        y = hexRadius + math.sin(ang) * hexRadius
-        points.append((x, y))
-    pygame.draw.polygon(hexSurf, hexColor, points)
-    # 3) rotate the surface by –angle (convert to degrees)
-    rotSurf = pygame.transform.rotate(hexSurf, -math.degrees(angle))
-    # 4) center it on SCREEN
-    rect = rotSurf.get_rect(center=(CENTER_X, CENTER_Y))
-    screen.blit(rotSurf, rect)
+    drawCore(screen, angle)
+
+    # 4) draw any shatter fragments
+    for p in shatterParticles:
+        p.draw(screen)
 
     # Launcher Spot
     pygame.draw.line(
@@ -554,6 +604,7 @@ def main():
     # 2) Main loop
     while running:
         dt = clock.tick(60) / 1000.0
+        updateShatterParticles(dt)
 
         # — input —
         running, firing, nextB, ammoQueue = processInput(nextB, firing, cloud, ammoQueue)
