@@ -9,6 +9,30 @@ BUBBLE_DIAM = BUBBLE_RADIUS * 2
 VERTICAL_STEP = int(BUBBLE_RADIUS * math.sqrt(3))
 R_STEP = BUBBLE_DIAM
 
+# --- Texture Constants ---
+
+BUBBLE_TEXTURE_PATHS = {
+    (255,   0,   0): 'assets/textures/bubbleRed.png',
+    (  0, 255,   0): 'assets/textures/bubbleGreen.png',
+    (  0,   0, 255): 'assets/textures/bubbleBlue.png',
+    (255, 255,   0): 'assets/textures/bubbleYellow.png',
+    (255,   0, 255): 'assets/textures/bubblePurple.png',
+    (255, 165,   0): 'assets/textures/bubbleOrange.png',
+}
+
+COLORS = [
+    (255,   0,   0),   # red
+    (  0, 255,   0),   # green
+    (  0,   0, 255),   # blue
+    (255, 255,   0),   # yellow
+    (255,   0, 255),   # purple
+    (255, 165,   0),   # orange
+]
+
+bubble_textures  = {}   # full-size
+preview_textures = {}   # half-size for ammo queue
+
+#--- Game Constants ---
 LAUNCH_SPEED = 12
 CLOUD_RADIUS = 400
 CORE_RADIUS = 20
@@ -17,14 +41,7 @@ penaltyBalls = []
 ANGULAR_DAMPING = 0.98
 LAUNCHER_Y = SCREEN_H - 50
 
-COLORS = [
-    (255, 0, 0),
-    (0, 255, 0),
-    (0, 0, 255),
-    (255, 255, 0),
-    (255, 0, 255),
-]
-GOLDEN_COLOR = (212, 175, 55)
+BLUE_COLOR = (40, 175, 230)
 
 # Precompute cloud center
 CENTER_X = SCREEN_W // 2
@@ -65,7 +82,7 @@ def spawnShatter():
         dir_ang = random.uniform(ang - 0.5, ang + 0.5)
         speed = random.uniform(200, 300)
         vx, vy = math.cos(dir_ang) * speed, math.sin(dir_ang) * speed
-        shatterParticles.append(ShatterParticle((x, y), (vx, vy), GOLDEN_COLOR, 1.0))
+        shatterParticles.append(ShatterParticle((x, y), (vx, vy), BLUE_COLOR, 1.0))
 
 def updateShatterParticles(dt):
     for p in shatterParticles[:]:
@@ -75,15 +92,23 @@ def updateShatterParticles(dt):
 
 def drawCore(surf, angle):
     hexR = CORE_RADIUS
+    
     diam = hexR * 2
+
     tmp = pygame.Surface((diam, diam), pygame.SRCALPHA)
-    col = (*GOLDEN_COLOR, 128)
+    col = (*BLUE_COLOR, 128)
     pts = [(hexR + math.cos(math.radians(60*i)) * hexR,
             hexR + math.sin(math.radians(60*i)) * hexR)
            for i in range(6)]
     pygame.draw.polygon(tmp, col, pts)
-    rot = pygame.transform.rotate(tmp, -math.degrees(angle))
+
+      # Rotate the hexagon
+    rot = pygame.transform.rotate(tmp, math.degrees(-angle) + 30) # +30 to align with the surrounding balls
+
+    # Center the rotated hexagon
     rect = rot.get_rect(center=(CENTER_X, CENTER_Y))
+
+    # Draw the rotated hexagon
     surf.blit(rot, rect)
 
 def handleCoreHit(b):
@@ -104,13 +129,13 @@ class Bubble:
         self.x += self.vx
         self.y += self.vy
 
+    # Draw Bubble with texture if available
     def draw(self, surf):
-        pygame.draw.circle(
-            surf,
-            self.color,
-            (int(self.x), int(self.y)),
-            BUBBLE_RADIUS
-        )
+        tex = bubble_textures.get(self.color)
+        if tex:
+            surf.blit(tex, (int(self.x - BUBBLE_RADIUS), int(self.y - BUBBLE_RADIUS)))
+        else:
+            pygame.draw.circle(surf, self.color, (int(self.x), int(self.y)), BUBBLE_RADIUS)
 
 
 # --- Utility Functions ---
@@ -296,10 +321,6 @@ def removeFloatingClusters(cloud, worldPosFn, score):
     return survivors, floating, score
 
 
-
-
-
-
 # --- Physics Helpers ---
 def handleWallAndCeilingBounce(b):
     # walls
@@ -312,14 +333,11 @@ def handleWallAndCeilingBounce(b):
         b.vy *= -1
         b.y = BUBBLE_RADIUS
 
-
 def shouldResetLauncher(b):
     return b.bounce_count > 3 or b.y > SCREEN_H
 
-
 def check_core_collision(b, cx, cy):
     return math.hypot(b.x - cx, b.y - cy) < CORE_RADIUS
-
 
 def attach_to_cloud(b, cloud, slots, angle, cx, cy):
     rel_x = b.x - cx
@@ -346,14 +364,31 @@ def spawnFalling(fall_list, to_fall, angle, cx, cy):
         nb.falling = True
         fall_list.append(nb)
 
-
 # --- Module Functions ---
 def init_pygame():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Bubbles")
+
+
+# load & scale each color’s PNG
+    for color, path in BUBBLE_TEXTURE_PATHS.items():
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            img = pygame.transform.scale(img, (BUBBLE_DIAM, BUBBLE_DIAM))
+            bubble_textures[color] = img
+            
+            # scale to half size for preview
+            # preview = half-diameter
+            pv = pygame.transform.scale(img, (BUBBLE_RADIUS, BUBBLE_RADIUS))
+            preview_textures[color] = pv
+
+        except pygame.error as e:
+            print(f"Failed to load {path}: {e}")
+
     clock = pygame.time.Clock()
     return screen, clock
+
 
 
 def initGame():
@@ -380,7 +415,6 @@ def initGame():
 
     return slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue  
 
-
 def processInput(nextB, firing, cloud, ammoQueue):
     running = True
     for ev in pygame.event.get():
@@ -402,7 +436,6 @@ def processInput(nextB, firing, cloud, ammoQueue):
                     firing = True
     # ammoQueue is unchanged here
     return running, firing, nextB, ammoQueue
-
 
 def handleKeyboard(nextB, firing, dt):
     keys = pygame.key.get_pressed()
@@ -474,7 +507,6 @@ def updateProjectile(
         nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
     return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
-
 def updateFalling(falling, dt):
     for b in falling[:]:
         b.vy += 400 * dt
@@ -503,7 +535,6 @@ def spawnPenaltyBalls(cloud, slots, speed=LAUNCH_SPEED):
         b.vy = dy/mag * speed
         penaltyBalls.append(b)
 
-
 def updatePenaltyBalls(slots, cloud, angle):
     """
     Move penaltyBalls toward center, and attach them to the cloud
@@ -531,10 +562,6 @@ def updatePenaltyBalls(slots, cloud, angle):
         # if we did collide, remove from penaltyBalls
         penaltyBalls.remove(b)
 
-
-
-
-
 def update_rotation(angle, angVel):
     angle += angVel
     angVel *= ANGULAR_DAMPING
@@ -549,18 +576,20 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
 
     for e in cloud:
         x, y = worldPos(e, angle, CENTER_X, CENTER_Y)
-        pygame.draw.circle(
-            screen,
-            e["color"],
-            (int(x), int(y)),
-            BUBBLE_RADIUS
-        )
+        tex = bubble_textures.get(e["color"])
+        if tex:
+            screen.blit( 
+                tex,  (int(x - BUBBLE_RADIUS), int(y - BUBBLE_RADIUS))
+            )
+        else:
+            # Fallback to drawing a circle if texture is not available
+            pygame.draw.circle( screen, e["color"], (int(x), int(y)), BUBBLE_RADIUS)
 
     # Core
 
     #pygame.draw.circle(
         #screen,
-        #GOLDEN_COLOR,
+        #BLUE_COLOR,
         #(CENTER_X, CENTER_Y),
         #BUBBLE_RADIUS * 2
     #)
@@ -586,7 +615,14 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
     for i, col in enumerate(ammoQueue[1:]):
         px = nextB.x + (i+1) * spacing
         py = LAUNCHER_Y
-        pygame.draw.circle(screen, col, (int(px), int(py)), previewR)
+        tex = preview_textures.get(col)
+        if tex:
+            screen.blit(
+            tex,
+            (int(px - previewR), int(py - previewR))
+        )
+        else:
+            pygame.draw.circle(screen, col, (int(px), int(py)), previewR)
 
     for b in penaltyBalls:
         b.draw(screen)
