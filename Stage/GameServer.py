@@ -20,6 +20,11 @@ BUBBLE_TEXTURE_PATHS = {
     (255, 165,   0): 'assets/textures/bubbleOrange.png',
 }
 
+STAR_EMPTY_PATH = 'assets/textures/star_empty.png'
+STAR_FULL_PATH  = 'assets/textures/star_full.png'
+star_empty_texture = None
+star_full_texture  = None
+
 COLORS = [
     (255,   0,   0),   # red
     (  0, 255,   0),   # green
@@ -386,12 +391,24 @@ def init_pygame():
         except pygame.error as e:
             print(f"Failed to load {path}: {e}")
 
+        try:
+            star_empty_texture = pygame.image.load(STAR_EMPTY_PATH).convert_alpha()
+            star_full_texture  = pygame.image.load(STAR_FULL_PATH).convert_alpha()
+            # optional: scale them all to e.g. 64×64:
+            star_empty_texture = pygame.transform.scale(star_empty_texture, (64,64))
+            star_full_texture  = pygame.transform.scale(star_full_texture,  (64,64))
+    
+        except pygame.error as e:
+            print(f"Failed to load star textures: {e}")
+
     clock = pygame.time.Clock()
     return screen, clock
 
-
+initialBallCount = 0
 
 def initGame():
+    global initialBallCount
+
     gridRadius = CLOUD_RADIUS // R_STEP
     slots      = createSlots(gridRadius)
     for slot in slots:
@@ -399,6 +416,7 @@ def initGame():
             slot["occupied"] = True
             break
     cloud = seedInitialCloud(slots, initialRings=3)
+    initialBallCount = len(cloud)
     falling = []
     angle = 0.0
     angVel = 5.0
@@ -412,6 +430,8 @@ def initGame():
 
     # nextB should be the first color in the queue
     nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
+
+
 
     return slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue  
 
@@ -567,6 +587,35 @@ def update_rotation(angle, angVel):
     angVel *= ANGULAR_DAMPING
     return angle, angVel
 
+def show_stars(screen, star_count):
+    # Draw 3 star slots in the center
+    if not (star_empty_texture and star_full_texture):
+        return
+
+    # Load and scale star textures
+    w,h = star_full_texture.get_size()
+    spacing = w + 10
+    total_w = spacing*2 + w
+    start_x = (SCREEN_W - total_w)//2
+    y = (SCREEN_H - h)//2
+
+    # Darken background behind
+    overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+    overlay.fill((0,0,0,180))
+    screen.blit(overlay, (0,0))
+    pygame.display.flip()
+    pygame.time.delay(300)
+
+    # reveal one star at a time
+    for i in range(3):
+        tx = start_x + i*spacing
+        # choose full vs empty
+        tex = star_full_texture if i < star_count else star_empty_texture
+        screen.blit(tex, (tx, y))
+        pygame.display.flip()
+        pygame.time.delay(300)
+
+
 
 def draw(screen, cloud, falling, nextB, angle, ammoQueue):
     screen.fill((30, 30, 30))
@@ -668,6 +717,26 @@ def main():
         updatePenaltyBalls(slots, cloud, angle)
         # — draw everything each frame —
         draw(screen, cloud, falling, nextB, angle, ammoQueue)
+
+    remaining = len(cloud)
+    frac = remaining / initialBallCount
+
+    # Calculate stars based on remaining bubbles
+    if remaining == 0:
+        stars = 3
+    elif frac < 0.25:
+        stars = 2
+    else:
+        stars = 1
+
+    final_score = score * stars
+
+    # pop up the stars
+    show_stars(screen, stars)
+    pygame.time.delay(1000)  # give them a moment
+
+    print(f"Game Over! You earned {stars} star{'s' if stars>1 else ''}.")
+    print(f"Score: {score} → {final_score} ({stars}×)")
 
     pygame.quit()
 
