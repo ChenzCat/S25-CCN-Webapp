@@ -1,34 +1,36 @@
-import keyboard
-import socket
-import time
+import pygame, socket
 
+def client_program(host='192.168.1.84', port=5000):
+    pygame.init()
+    screen = pygame.display.set_mode((1,1), pygame.HIDDEN)
+    sock = socket.socket()
+    sock.connect((host, port))
 
-def client_program():
-    print("trying to connect to server")
-    host = "10.14.228.68"
-    port = 5000  # socket server port number
+    running = True
+    while running:
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                running = False
 
-    client_socket = socket.socket()  # instantiate
-    client_socket.connect((host, port))  # connect to the server
+            # keys
+            elif ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_a:
+                    sock.send(b'A')
+                elif ev.key == pygame.K_d:
+                    sock.send(b'D')
+                elif ev.key == pygame.K_q:
+                    running = False
 
-    print("waiting for keyboard input")
-    while keyboard.read_key() != 'q':
+            # mouse click or move
+            elif ev.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = ev.pos
+                msg = f"MOUSE:{mx},{my}".encode()
+                sock.send(msg)
 
-        if keyboard.is_pressed('a'):
-            client_socket.send('a'.encode())  # send message
-            time.sleep(0.1)
-        if keyboard.is_pressed('d'):
-            client_socket.send('d'.encode())  # send message
-            time.sleep(0.1)
-        if keyboard.is_pressed('s'):
-            client_socket.send('s'.encode())  # send message
-            time.sleep(0.1)
-        if keyboard.is_pressed('w'):
-            client_socket.send('w'.encode())  # send message
-            time.sleep(0.1)
+        pygame.time.wait(10)
 
-    client_socket.close()  # close the connection
+    sock.close()
+    pygame.quit()
 
-
-if __name__ == '__main__':
+if __name__=="__main__":
     client_program()
