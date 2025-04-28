@@ -1,4 +1,4 @@
-# Vincenzo Cavallaro
+# Vincenzo Cavallaro & Bridget Hammond
 # CCN: 4/28/2025
 # Bubble Wheel Server
 # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -616,7 +616,7 @@ def updateProjectile(
         nextB.bounce_count = 0
         return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
-    # core‐hit check → end game
+    # core‐hit check = end game
     if handleCoreHit(nextB):
         global gameOver, endTime, outcome, baseScore, stars
         spawnShatter()
