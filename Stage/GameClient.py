@@ -22,7 +22,7 @@ def client_program(host, port):
     pygame.init()
     pygame.key.set_repeat(100, 100)     
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-    pygame.display.set_caption("Bubbles Input Client")
+    pygame.display.set_caption("Bwheel Input Client")
 
     # — connect to server —
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
