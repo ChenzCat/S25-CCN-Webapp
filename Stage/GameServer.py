@@ -2,39 +2,14 @@ import pygame
 import random
 import math
 
-# --- Constants ---
+# Global Values
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 SCREEN_W, SCREEN_H = 600, 750
 BUBBLE_RADIUS = 18
 BUBBLE_DIAM = BUBBLE_RADIUS * 2
 VERTICAL_STEP = int(BUBBLE_RADIUS * math.sqrt(3))
 R_STEP = BUBBLE_DIAM
 
-# --- Texture Constants ---
-BUBBLE_TEXTURE_PATHS = {
-    (255,   0,   0): 'assets/textures/bubbleRed.png',
-    (  0, 255,   0): 'assets/textures/bubbleGreen.png',
-    (  0,   0, 255): 'assets/textures/bubbleBlue.png',
-    (255, 255,   0): 'assets/textures/bubbleYellow.png',
-    (255,   0, 255): 'assets/textures/bubblePurple.png',
-    (255, 165,   0): 'assets/textures/bubbleOrange.png',
-}
-
-STAR_EMPTY_PATH = 'assets/textures/star_empty.png'
-STAR_FULL_PATH  = 'assets/textures/star_full.png'
-star_empty_texture = None
-star_full_texture  = None
-
-COLORS = [
-    (255,   0,   0),   # red
-    (  0, 255,   0),   # green
-    (  0,   0, 255),   # blue
-    (255, 255,   0),   # yellow
-    (255,   0, 255),   # purple
-    (255, 165,   0),   # orange
-]
-
-bubble_textures  = {}   # full-size
-preview_textures = {}   # half-size for ammo queue
 
 #--- Game Constants ---
 LAUNCH_SPEED = 12
@@ -45,21 +20,92 @@ penaltyBalls = []
 ANGULAR_DAMPING = 0.98
 LAUNCHER_Y = SCREEN_H - 50
 
-BLUE_COLOR = (40, 175, 230)
-
 # Precompute cloud center
 CENTER_X = SCREEN_W // 2
 CENTER_Y = SCREEN_H // 3
 
-# Sound Engine
-pygame.mixer.init()
-#SHATTER_SOUND = pygame.mixer.Sound('assets/sounds/shatter.wav')
+
 
 # Game Ending States
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 gameOver = False
-coreHitTime = None
+
+# Alloted time for score sequence
+endTime     = None        
+
+# 'win' or 'lose'
+outcome     = None   
+
+# Score Outcome     
 baseScore = 0
 stars = 0
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+# Assets and Constants
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Bubble Textures
+BUBBLE_TEXTURE_PATHS = {
+    (255,   0,   0): 'assets/textures/bubbleRed.png',
+    (  0, 255,   0): 'assets/textures/bubbleGreen.png',
+    (  0,   0, 255): 'assets/textures/bubbleBlue.png',
+    (255, 255,   0): 'assets/textures/bubbleYellow.png',
+    (255,   0, 255): 'assets/textures/bubblePurple.png',
+    (255, 165,   0): 'assets/textures/bubbleOrange.png',
+}
+
+# Bubble Texture Implementation
+bubble_textures  = {}   # full-size
+preview_textures = {}   # half-size for ammo queue
+
+
+# Star Textures
+STAR_EMPTY_PATH = 'assets/textures/star_empty.png'
+STAR_FULL_PATH  = 'assets/textures/star_full.png'
+
+# Star Texture Implementation
+star_empty_texture = None
+star_full_texture  = None
+
+# Constant Colors
+COLORS = [
+    (255,   0,   0),   # red
+    (  0, 255,   0),   # green
+    (  0,   0, 255),   # blue
+    (255, 255,   0),   # yellow
+    (255,   0, 255),   # purple
+    (255, 165,   0),   # orange
+]
+
+# Core Color
+BLUE_COLOR = (40, 175, 230)
+
+# --------------------------------------------------------------------------------
+
+# Sound Engine
+pygame.mixer.init()
+SHATTER_SOUND = None #pygame.mixer.Sound('assets/sounds/shatter.wav')
+
+# Thud Sound
+THUD_SOUND = None #pygame.mixer.Sound('assets/sounds/thud.wav')
+
+# Fall Sound
+FALL_SOUND = None #pygame.mixer.Sound('assets/sounds/fall.wav')
+
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
 
 # --- Bubble Class ---
 class Bubble:
@@ -154,7 +200,6 @@ def worldPos(entry, angle, cx, cy):
     y = cy + rx * sin_a + ry * cos_a
     return x, y
 
-
 def createSlots(gridRadius):
     """
     Builds a hexagon of slots using axial coordinates (q,r).
@@ -177,7 +222,6 @@ def createSlots(gridRadius):
                 "occupied": False
             })
     return slots
-
 
 def seedInitialCloud(slots, initialRings=3):
     """
@@ -238,7 +282,6 @@ def findNearestFreeSlot(slots, rxNew, ryNew):
 
     # no slot nearby
     return None
-
 
 def findConnectedCluster(cloud, startIdx, worldPosFn):
     """
@@ -375,12 +418,30 @@ def spawnFalling(fall_list, to_fall, angle, cx, cy):
 # --- Module Functions ---
 def init_pygame():
     pygame.init()
+    pygame.font.init()
+    pygame.mixer.init()
+    
+    #
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Bubbles")
-    global star_empty_texture, star_full_texture
-
-
-# load & scale each color’s PNG
+    global star_empty_texture, star_full_texture, scoreFont  
+    
+    global thud_sound, fall_sound, shatter_sound
+    
+    # Sound Setup
+    thud_sound = pygame.mixer.Sound('assets/sounds/thud.wav')
+    fall_sound = pygame.mixer.Sound('assets/sounds/fall.wav')
+    shatter_sound = pygame.mixer.Sound('assets/sounds/shatter.wav')
+    
+    thud_sound.set_volume(0.5)
+    fall_sound.set_volume(0.5)
+    shatter_sound.set_volume(0.5)
+    
+    # Score Font Setup
+    scoreFont = pygame.font.SysFont("Arial", 24)
+    
+    
+# load textures
     for color, path in BUBBLE_TEXTURE_PATHS.items():
         try:
             img = pygame.image.load(path).convert_alpha()
@@ -406,8 +467,6 @@ def init_pygame():
 
     clock = pygame.time.Clock()
     return screen, clock
-
-initialBallCount = 0
 
 def initGame():
     global initialBallCount
@@ -488,8 +547,9 @@ def updateProjectile(
         nextB.bounce_count    = 0
         return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
+    # When a Bubble hits the core: End The Game, Shatter Effect, and Score Calculation
     if handleCoreHit(nextB):
-        global gameOver, coreHitTime, baseScore, stars
+        global gameOver, endTime, outcome, baseScore, stars
         spawnShatter()                      # trigger shards
         gameOver     = True
         coreHitTime = pygame.time.get_ticks()
@@ -634,7 +694,17 @@ def show_stars(screen, star_count):
         pygame.display.flip()
         pygame.time.delay(300)
 
-def draw(screen, cloud, falling, nextB, angle, ammoQueue):
+
+def drawScore(screen, score):
+    txt = scoreFont.render(f"Score: {score}", True, (255,255,255))
+    screen.blit(txt, (10, SCREEN_H - txt.get_height() - 10))
+
+def debugPrintFinalScore(baseScore, stars, finalScore):
+    print(f"Game Over! You earned {stars} star{'s' if stars != 1 else ''}.")
+    print(f"Score: {baseScore} → {finalScore} ({max(1, stars)}×)")
+
+
+def draw(screen, cloud, falling, nextB, angle, ammoQueue, score):
     screen.fill((30, 30, 30))
 
     for b in falling:
@@ -650,15 +720,6 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
         else:
             # Fallback to drawing a circle if texture is not available
             pygame.draw.circle( screen, e["color"], (int(x), int(y)), BUBBLE_RADIUS)
-
-    # Core
-
-    #pygame.draw.circle(
-        #screen,
-        #BLUE_COLOR,
-        #(CENTER_X, CENTER_Y),
-        #BUBBLE_RADIUS * 2
-    #)
 
     drawCore(screen, angle)
 
@@ -693,6 +754,8 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue):
     for b in penaltyBalls:
         b.draw(screen)
 
+    # live score HUD
+    drawScore(screen, score)
     pygame.display.flip()
 
 
@@ -745,114 +808,96 @@ def show_end_sequence(screen, baseScore, stars):
 # ----------------------------------------------------------------------------------------------------------
 
 
-
-# --- Main ---
 def main():
     global gameOver, coreHitTime, baseScore, stars
+
+    # — 1) Pygame + asset init —
     screen, clock = init_pygame()
 
-    # 1) Initialize everything once — note: 'slots' not 'lots'
+    # — 2) Game-state init —
     slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue = initGame()
 
-    # 2) Main loop
+    # — 3) Main loop —
     while running:
         dt = clock.tick(60) / 1000.0
+
+        # a) update shatter fragments
         updateShatterParticles(dt)
-                
-        
-        # — if we've hit the core, freeze the play state and show end screen after delay —
+
+        # b) if we’ve hit the core, show only core+shards & eventually end
         if gameOver:
-            # draw just the core + shards
             screen.fill((30,30,30))
             drawCore(screen, angle)
             for p in shatterParticles:
                 p.draw(screen)
             pygame.display.flip()
 
-            # after 2s, fire off your end-sequence
             if pygame.time.get_ticks() - coreHitTime > 2000:
                 show_end_sequence(screen, baseScore, stars)
                 running = False
             continue
 
-
-
-        # — input —
+        # c) input
         running, firing, nextB, ammoQueue = processInput(nextB, firing, cloud, ammoQueue)
-
-        # — move the preview bubble left/right —
         nextB = handleKeyboard(nextB, firing, dt)
 
-        # — ensure preview color stays valid —
+        # d) keep preview color valid
         if not firing:
             activeColors = [e["color"] for e in cloud]
             if activeColors and nextB.color not in activeColors:
                 nextB.color = random.choice(activeColors)
 
-        # — firing logic —
+        # e) firing & attachment logic
         if firing:
-            firing, nextB, slots, cloud, falling, angVel, score, ammoQueue = updateProjectile(
-                nextB, firing, slots,
-                cloud, falling, angle,
-                angVel, score, ammoQueue
-            )
+            firing, nextB, slots, cloud, falling, angVel, score, ammoQueue = \
+                updateProjectile(nextB, firing, slots,
+                                 cloud, falling, angle,
+                                 angVel, score, ammoQueue)
 
-        # — update falling bubbles & rotation —
+        # f) physics updates
         falling = updateFalling(falling, dt)
         angle, angVel = update_rotation(angle, angVel)
+
+        # g) boundary‐hit = immediate game over
         for e in cloud:
             x, y = worldPos(e, angle, CENTER_X, CENTER_Y)
-            if (x - BUBBLE_RADIUS <= 0
-                or x + BUBBLE_RADIUS >= SCREEN_W
-                or y - BUBBLE_RADIUS <= 0
-                or y + BUBBLE_RADIUS >= SCREEN_H):
-                gameOver     = True
-                coreHitTime  = pygame.time.get_ticks()
-                baseScore    = score
-                # compute stars same as core-hit
-                remaining = len(cloud)
-                frac      = remaining / initialBallCount
-                if remaining == 0:
-                    stars = 3
-                elif frac < 0.25:
-                    stars = 2
-                elif frac < 0.50:
-                    stars = 1
-                else:
-                    stars = 0
+            if (x - BUBBLE_RADIUS <= 0 or x + BUBBLE_RADIUS >= SCREEN_W
+             or y - BUBBLE_RADIUS <= 0 or y + BUBBLE_RADIUS >= SCREEN_H):
+                gameOver    = True
+                coreHitTime = pygame.time.get_ticks()
+                baseScore   = score
+                # compute stars the same way you do on core‐hit
+                remaining   = len(cloud)
+                frac        = remaining / initialBallCount
+                if remaining == 0:         stars = 3
+                elif frac < 0.25:          stars = 2
+                elif frac < 0.50:          stars = 1
+                else:                      stars = 0
                 break
 
-    # if we just hit the boundary, skip straight to your game-over handler
         if gameOver:
             continue
-        
 
-
+        # h) penalty balls
         updatePenaltyBalls(slots, cloud, angle)
-        # — draw everything each frame —
-        draw(screen, cloud, falling, nextB, angle, ammoQueue)
 
+        # i) final draw (cloud, core, bubbles, launcher, score HUD…)
+        draw(screen, cloud, falling, nextB, angle, ammoQueue, score)
+
+    # — 4) After loop: end‐of‐game summary —
     remaining = len(cloud)
-    frac = remaining / initialBallCount
+    frac      = remaining / initialBallCount
+    if remaining == 0:         stars = 3
+    elif frac < 0.25:          stars = 2
+    elif frac < 0.50:          stars = 1
+    else:                      stars = 0
 
-    # Calculate stars based on remaining bubbles
-    if remaining == 0:
-        stars = 3
-    elif frac < 0.25:
-        stars = 2
-    elif frac < 0.50:
-        stars = 1
-    else:
-        stars = 0
+    multiplier   = stars if stars > 1 else 1
+    final_score  = score * multiplier
 
-    final_score = score * stars
-
-    # pop up the stars
     show_stars(screen, stars)
-    pygame.time.delay(1000)  # give them a moment
-
-    print(f"Game Over! You earned {stars} star{'s' if stars != 1 else ''}.")
-    print(f"Score: {score} → {final_score} ({stars}×)")
+    pygame.time.delay(1000)
+    debugPrintFinalScore(score, stars, final_score)
 
     pygame.quit()
 
