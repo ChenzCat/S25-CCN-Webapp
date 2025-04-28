@@ -11,6 +11,7 @@ import time
 ENABLE_NETWORK_INPUT = True
 net_input = queue.Queue()
 client_connected = False
+net_mouse_pos = None
 
 def server_thread(host='', port=5000):
     global client_connected
@@ -138,6 +139,8 @@ THUD_SOUND = None #pygame.mixer.Sound('assets/sounds/thud.wav')
 # Fall Sound
 FALL_SOUND = None #pygame.mixer.Sound('assets/sounds/fall.mp3')
 
+# Fall Sound
+HIT_SOUND = None #pygame.mixer.Sound('assets/sounds/hit.wav')
 # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -452,6 +455,8 @@ def attach_to_cloud(b, cloud, slots, angle, cx, cy):
     return cloud, 0.0
 
 def spawnFalling(fall_list, to_fall, angle, cx, cy):
+    if to_fall:
+        FALL_SOUND.play()
     for e in to_fall:
         fx, fy = worldPos(e, angle, cx, cy)
         nb = Bubble(fx, fy, e["color"])
@@ -468,17 +473,18 @@ def init_pygame():
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Bubbles")
     global star_empty_texture, star_full_texture, scoreFont  
-    
-    global thud_sound, fall_sound, shatter_sound
-    
-    # Sound Setup
-    thud_sound = pygame.mixer.Sound('assets/sounds/thud.wav')
-    fall_sound = pygame.mixer.Sound('assets/sounds/fall.mp3')
-    shatter_sound = pygame.mixer.Sound('assets/sounds/shatter.wav')
-    
-    thud_sound.set_volume(0.5)
-    fall_sound.set_volume(0.5)
-    shatter_sound.set_volume(0.5)
+
+    global SHATTER_SOUND, THUD_SOUND, FALL_SOUND, HIT_SOUND
+    SHATTER_SOUND = pygame.mixer.Sound('assets/sounds/shatter.wav')
+    THUD_SOUND    = pygame.mixer.Sound('assets/sounds/thud.wav')
+    FALL_SOUND    = pygame.mixer.Sound('assets/sounds/fall.mp3')
+    HIT_SOUND     = pygame.mixer.Sound('assets/sounds/hit.wav')
+
+    # Sound: volume
+    SHATTER_SOUND.set_volume(0.5)
+    THUD_SOUND.set_volume(0.5)
+    FALL_SOUND.set_volume(0.5)
+    HIT_SOUND.set_volume(0.4)
     
     # Score Font Setup
     scoreFont = pygame.font.SysFont("Arial", 24)
@@ -594,7 +600,7 @@ def updateProjectile(
     if handleCoreHit(nextB):
         global gameOver, endTime, outcome, baseScore, stars
         spawnShatter()                      # Trigger: Shard Effects
-        shatter_sound.play()                # Play:    Shatter Sound.mp3
+        SHATTER_SOUND.play()                # Play:    Shatter Sound.mp3
         outcome   = 'win'                   # Set:     Outcome to Win  
         gameOver     = True                 # Set:     Game Over to True    
         endTime   = pygame.time.get_ticks() 
@@ -620,6 +626,7 @@ def updateProjectile(
     if impulse:
         angVel += impulse
                 # the new bubble is last in cloud
+        HIT_SOUND.play()
         startIdx = len(cloud) - 1
         worldFn  = lambda e: worldPos(e, angle, CENTER_X, CENTER_Y)
         cloud, toFall, score = removeClusterFromIndex(
@@ -699,6 +706,7 @@ def updatePenaltyBalls(slots, cloud, angle):
                 if slot:
                     slot["occupied"] = True
                     cloud.append({"slot": slot, "color": b.color})
+                    HIT_SOUND.play()
                 break
         else:
             # not collided yet
@@ -801,6 +809,12 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue, score):
 
     # live score HUD
     drawScore(screen, score)
+    if net_mouse_pos:
+        mx, my = net_mouse_pos
+        dot = pygame.Surface((10,10), pygame.SRCALPHA)
+        pygame.draw.circle(dot, (128,128,128,128), (5,5), 5)
+        screen.blit(dot, (mx-5, my-5))
+        
     pygame.display.flip()
 
 
@@ -852,106 +866,135 @@ def show_end_sequence(screen, baseScore, stars):
     pygame.time.delay(1200)
 
 def revealOutcome(screen, outcome, baseScore, stars, finalScore):
-    # Fade to Black
+    # 1) Fade to black
     fade = pygame.Surface((SCREEN_W, SCREEN_H))
-    for alpha in range(0,256,8):
+    for alpha in range(0, 256, 8):
         fade.set_alpha(alpha)
-        fade.fill((0,0,0))
-        screen.blit(fade,(0,0))
+        fade.fill((0, 0, 0))
+        screen.blit(fade, (0, 0))
         pygame.display.flip()
         pygame.time.delay(30)
-        
+
+    # 2) Draw the outcome text & stars
     pygame.font.init()
     titleF = pygame.font.SysFont(None, 80)
     smallF = pygame.font.SysFont(None, 48)
-    
-    title = "You Win" if outcome=="win" else "You Lose"
-    txtT  = titleF.render(title, True, (255,255,255))
-    rT    = txtT.get_rect(center=(SCREEN_W//2, SCREEN_H//2 -150))
+
+    title = "You Win" if outcome == "win" else "You Lose"
+    txtT = titleF.render(title, True, (255, 255, 255))
+    rT = txtT.get_rect(center=(SCREEN_W//2, SCREEN_H//2 - 150))
     screen.blit(txtT, rT)
 
-       # stars row
-    w,h      = star_full_texture.get_size()
-    spacing  = w+20
-    total_w  = spacing*2 + w
-    start_x  = (SCREEN_W-total_w)//2
-    y_star   = SCREEN_H//2 - 50
+    # stars row
+    w, h = star_full_texture.get_size()
+    spacing = w + 20
+    total_w = spacing * 2 + w
+    start_x = (SCREEN_W - total_w)//2
+    y_star = SCREEN_H//2 - 50
     for i in range(3):
-        tex = star_full_texture if i<stars else star_empty_texture
-        screen.blit(tex,(start_x+i*spacing,y_star))
-        
-    # final score text
-    txtF = smallF.render(f"Final Score: {finalScore}", True, (255,255,255))
-    rF   = txtF.get_rect(center=(SCREEN_W//2, SCREEN_H//2 +100))
+        tex = star_full_texture if i < stars else star_empty_texture
+        screen.blit(tex, (start_x + i*spacing, y_star))
+
+    # final score
+    txtF = smallF.render(f"Final Score: {finalScore}", True, (255, 255, 255))
+    rF = txtF.get_rect(center=(SCREEN_W//2, SCREEN_H//2 + 100))
     screen.blit(txtF, rF)
 
+    # 3) **Flip** to show it
     pygame.display.flip()
-    waiting = True
-    while waiting:
+
+    # 4) Hold for ten seconds (or until input)
+    start = pygame.time.get_ticks()
+    while pygame.time.get_ticks() - start < 10000:
         for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                waiting = False
-            elif ev.type == pygame.MOUSEBUTTONDOWN or ev.type == pygame.KEYDOWN:
-                waiting = False
-            pygame.time.wait(50)
+            if ev.type in (pygame.QUIT, pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+                return
+        pygame.time.delay(50)
 # ----------------------------------------------------------------------------------------------------------
+
+def processRemoteInput(nextB, firing):
+    global net_mouse_pos
+
+    while not net_input.empty():
+        cmd = net_input.get().strip()
+        if cmd == 'A':
+            nextB.x = max(BUBBLE_RADIUS, nextB.x - 5)
+
+        elif cmd == 'D':
+            nextB.x = min(SCREEN_W - BUBBLE_RADIUS, nextB.x + 5)
+
+        elif cmd.startswith('MOUSEMOVE:'):
+            # just update cursor
+            try:
+                _, coords = cmd.split(':',1)
+                mx, my    = map(int, coords.split(',',1))
+                net_mouse_pos = (mx, my)
+            except:
+                continue
+
+        elif cmd.startswith('MOUSECLICK:'):
+            # update cursor + fire a shot
+            try:
+                _, coords = cmd.split(':',1)
+                mx, my    = map(int, coords.split(',',1))
+                net_mouse_pos = (mx, my)
+            except:
+                continue
+
+            if not firing:
+                dx, dy = mx - nextB.x, my - nextB.y
+                mag    = math.hypot(dx, dy) or 1
+                nextB.vx = dx / mag * LAUNCH_SPEED
+                nextB.vy = dy / mag * LAUNCH_SPEED
+                firing   = True
+
+    return nextB, firing
+
+def drawRemoteCursor(screen):
+    if net_mouse_pos:
+        mx, my = net_mouse_pos
+        dot = pygame.Surface((10,10), pygame.SRCALPHA)
+        pygame.draw.circle(dot, (128,128,128,128), (5,5), 5)
+        screen.blit(dot, (mx-5, my-5))
 
 
 def main():
     global gameOver, baseScore, stars, endTime, outcome
-
-
-    # — 1) Pygame + asset init —
     screen, clock = init_pygame()
 
-
+    # Initialize: Client Connection
     if ENABLE_NETWORK_INPUT:
         threading.Thread(target=server_thread, daemon=True).start()
         while not client_connected:
-
             print("Waiting for network client…")            # Ctrl+C: Exit Search
             time.sleep(5.0)
     
     
-
-    # — 2) Game-state init —
+    # Initialize: Game State
     slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue = initGame()
 
-    # — 3) Main loop —
+    # Initalize: Game Loop
     while running:
         dt = clock.tick(60) / 1000.0
 
-        
+        # Enable: Remote Cursor
         if ENABLE_NETWORK_INPUT:
-            while not net_input.empty():
-                cmd = net_input.get()
-                if cmd == 'A':
-                    nextB.x = max(BUBBLE_RADIUS, nextB.x - 5)
-                elif cmd == 'D':
-                    nextB.x = min(SCREEN_W - BUBBLE_RADIUS, nextB.x + 5)
-                elif cmd.startswith('MOUSE:'):
-                    _, coords = cmd.split(':',1)
-                    mx, my = map(int, coords.split(','))
-                    if not firing:
-                        dx, dy = mx-nextB.x, my-nextB.y
-                        mag = math.hypot(dx,dy) or 1
-                        nextB.vx = dx/mag * LAUNCH_SPEED
-                        nextB.vy = dy/mag * LAUNCH_SPEED
-                        firing = True
-                
-        # a) update shatter fragments
-        updateShatterParticles(dt)
+            nextB, firing = processRemoteInput(nextB, firing)
 
-        # b) if we’ve hit the core, show only core+shards & eventually end
+        # Display: Special Effects
+        updateShatterParticles(dt)
+            # —  Display: Game Over Sequence  — 
         if gameOver:
+            # 1) ensure endTime is set exactly once
+            if endTime is None:
+                endTime = pygame.time.get_ticks()
+
+            # 2) draw the static game-over frame
             screen.fill((30, 30, 30))
-            
-            # Win Condition Outcome
-            if outcome=='win':
+            if outcome == 'win':
                 drawCore(screen, angle)
                 for p in shatterParticles:
                     p.draw(screen)
-            
             else:
                 for e in cloud:
                     x, y = worldPos(e, angle, CENTER_X, CENTER_Y)
@@ -961,28 +1004,46 @@ def main():
                     else:
                         pygame.draw.circle(screen, e["color"], (int(x), int(y)), BUBBLE_RADIUS)
                 drawCore(screen, angle)
+
+            drawRemoteCursor(screen)
             pygame.display.flip()
-            
-            
-            # Two Second Pause: Display Stars and Final Score
-            if pygame.time.get_ticks() - endTime  > 2000:
-                remaining = len(cloud)
-                frac      = remaining / initialBallCount
-                if remaining == 0:         stars = 3
-                elif frac < 0.25:          stars = 2
-                elif frac < 0.50:          stars = 1
-                else:                      stars = 0
-                multiplier   = stars if stars > 1 else 1
-                finalScore = baseScore * multiplier
+
+            # 3) after 2s, show the final outcome once
+            if pygame.time.get_ticks() - endTime > 2000:
+                finalScore = baseScore * max(1, stars)
                 revealOutcome(screen, outcome, baseScore, stars, finalScore)
                 running = False
+
+            # 4) don’t run any other logic until we quit
             continue
+
+    
+                
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         # c) input
         running, firing, nextB, ammoQueue = processInput(nextB, firing, cloud, ammoQueue)
         nextB = handleKeyboard(nextB, firing, dt)
 
-        # d) keep preview color valid
+        # Update: Previvew Colors
         if not firing:
             activeColors = [e["color"] for e in cloud]
             if activeColors and nextB.color not in activeColors:
@@ -991,9 +1052,7 @@ def main():
         # e) firing & attachment logic
         if firing:
             firing, nextB, slots, cloud, falling, angVel, score, ammoQueue = \
-                updateProjectile(nextB, firing, slots,
-                                 cloud, falling, angle,
-                                 angVel, score, ammoQueue)
+                updateProjectile(nextB, firing, slots, cloud, falling, angle, angVel, score, ammoQueue)
 
         # f) physics updates
         falling = updateFalling(falling, dt)
@@ -1011,7 +1070,7 @@ def main():
                 outcome   = 'lose'
                 endTime   = pygame.time.get_ticks()
                 baseScore = score
-                thud_sound.play()
+                THUD_SOUND.play()
             
                 # Compute stars
                 remaining   = len(cloud)

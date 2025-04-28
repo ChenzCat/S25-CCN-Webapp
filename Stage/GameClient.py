@@ -5,6 +5,8 @@ import pygame
 
 # Match your server’s window size
 SCREEN_W, SCREEN_H = 600, 750
+CORE_REF_RADIUS = 20
+CORE_REF_POS    = (SCREEN_W//2, SCREEN_H//3)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -12,7 +14,7 @@ def parse_args():
     )
     parser.add_argument(
         "-H", "--host",
-        default="192.168.1.112",
+        default="192.168.1.84",
         help="Server IP address"
     )
     parser.add_argument(
@@ -26,6 +28,7 @@ def parse_args():
 def client_program(host, port):
     # — init pygame with a visible window —
     pygame.init()
+    pygame.key.set_repeat(100, 100)     
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("Bubbles Input Client")
 
@@ -41,6 +44,7 @@ def client_program(host, port):
 
     running = True
     while running:
+        
         for ev in pygame.event.get():
             # Quit (window close or Q key)
             if ev.type == pygame.QUIT:
@@ -61,14 +65,19 @@ def client_program(host, port):
             # Mouse click: send the click position
             elif ev.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = ev.pos
-                msg = f"MOUSE:{mx},{my}".encode()
+                sock.sendall(f"MOUSECLICK:{mx},{my}".encode())
+
+            elif ev.type == pygame.MOUSEMOTION:
+                mx, my = ev.pos
                 try:
-                    sock.sendall(msg)
+                    sock.sendall(f"MOUSEMOVE:{mx},{my}".encode())
                 except Exception:
                     running = False
 
         # (Optional) fill background so you see the client window
         screen.fill((50, 50, 50))
+        
+        pygame.draw.circle( screen,(128, 128, 128), CORE_REF_POS, CORE_REF_RADIUS, 2)   
         pygame.display.flip()
 
         pygame.time.wait(10)
