@@ -482,7 +482,7 @@ def init_pygame():
     pygame.mixer.init()
     
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-    pygame.display.set_caption("Bubble Wheel")
+    pygame.display.set_caption("Bubble Wheel Server")
     global star_empty_texture, star_full_texture, scoreFont  
 
     global SHATTER_SOUND, THUD_SOUND, FALL_SOUND, HIT_SOUND
