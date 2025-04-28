@@ -1,32 +1,24 @@
-import sys
 import argparse
 import socket
 import pygame
 
-# Match your server’s window size
-SCREEN_W, SCREEN_H = 600, 750
+# Constants
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SCREEN_W, SCREEN_H = 600, 750 # Similar to the server window size
 CORE_REF_RADIUS = 20
 CORE_REF_POS    = (SCREEN_W//2, SCREEN_H//3)
 
+# Terminal Feedback
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Remote input client for Bubbles game"
-    )
-    parser.add_argument(
-        "-H", "--host",
-        default="192.168.1.84",
-        help="Server IP address"
-    )
-    parser.add_argument(
-        "-P", "--port",
-        type=int,
-        default=5000,
-        help="Server port"
-    )
+    parser = argparse.ArgumentParser(description="Remote input client for Bubbles game")
+    parser.add_argument("-H", "--host", default="10.22.18.153", help="Server IP address")
+    parser.add_argument("-P", "--port", type=int, default=5000, help="Server port")
     return parser.parse_args()
 
+# Pygame Clientside Server
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def client_program(host, port):
-    # — init pygame with a visible window —
     pygame.init()
     pygame.key.set_repeat(100, 100)     
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
@@ -74,7 +66,7 @@ def client_program(host, port):
                 except Exception:
                     running = False
 
-        # (Optional) fill background so you see the client window
+        # Background
         screen.fill((50, 50, 50))
         
         pygame.draw.circle( screen,(128, 128, 128), CORE_REF_POS, CORE_REF_RADIUS, 2)   
