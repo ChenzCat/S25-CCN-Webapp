@@ -17,7 +17,7 @@ CORE_REF_POS    = (SCREEN_W//2, SCREEN_H//3)
 # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def parse_args():
     parser = argparse.ArgumentParser(description="Remote input client for Bubbles game")
-    parser.add_argument("-H", "--host", default="10.14.228.16", help="Server IP address")
+    parser.add_argument("-H", "--host", default="192.168.86.20", help="Server IP address")
     parser.add_argument("-P", "--port", type=int, default=5000, help="Server port")
     return parser.parse_args()
 
