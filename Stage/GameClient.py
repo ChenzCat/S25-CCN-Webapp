@@ -1,34 +1,90 @@
-import keyboard
+import sys
+import argparse
 import socket
-import time
+import pygame
 
+# Match your server’s window size
+SCREEN_W, SCREEN_H = 600, 750
+CORE_REF_RADIUS = 20
+CORE_REF_POS    = (SCREEN_W//2, SCREEN_H//3)
 
-def client_program():
-    print("trying to connect to server")
-    host = "10.14.228.68"
-    port = 5000  # socket server port number
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Remote input client for Bubbles game"
+    )
+    parser.add_argument(
+        "-H", "--host",
+        default="192.168.1.84",
+        help="Server IP address"
+    )
+    parser.add_argument(
+        "-P", "--port",
+        type=int,
+        default=5000,
+        help="Server port"
+    )
+    return parser.parse_args()
 
-    client_socket = socket.socket()  # instantiate
-    client_socket.connect((host, port))  # connect to the server
+def client_program(host, port):
+    # — init pygame with a visible window —
+    pygame.init()
+    pygame.key.set_repeat(100, 100)     
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    pygame.display.set_caption("Bubbles Input Client")
 
-    print("waiting for keyboard input")
-    while keyboard.read_key() != 'q':
+    # — connect to server —
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect((host, port))
+        print(f"✔ Connected to {host}:{port}")
+    except Exception as e:
+        print(f"✖ Could not connect to {host}:{port}: {e}")
+        pygame.quit()
+        return
 
-        if keyboard.is_pressed('a'):
-            client_socket.send('a'.encode())  # send message
-            time.sleep(0.1)
-        if keyboard.is_pressed('d'):
-            client_socket.send('d'.encode())  # send message
-            time.sleep(0.1)
-        if keyboard.is_pressed('s'):
-            client_socket.send('s'.encode())  # send message
-            time.sleep(0.1)
-        if keyboard.is_pressed('w'):
-            client_socket.send('w'.encode())  # send message
-            time.sleep(0.1)
+    running = True
+    while running:
+        
+        for ev in pygame.event.get():
+            # Quit (window close or Q key)
+            if ev.type == pygame.QUIT:
+                running = False
 
-    client_socket.close()  # close the connection
+            # Keys A, D, Q
+            elif ev.type == pygame.KEYDOWN:
+                try:
+                    if ev.key == pygame.K_a:
+                        sock.sendall(b"A")
+                    elif ev.key == pygame.K_d:
+                        sock.sendall(b"D")
+                    elif ev.key == pygame.K_q:
+                        running = False
+                except Exception:
+                    running = False
 
+            # Mouse click: send the click position
+            elif ev.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = ev.pos
+                sock.sendall(f"MOUSECLICK:{mx},{my}".encode())
 
-if __name__ == '__main__':
-    client_program()
+            elif ev.type == pygame.MOUSEMOTION:
+                mx, my = ev.pos
+                try:
+                    sock.sendall(f"MOUSEMOVE:{mx},{my}".encode())
+                except Exception:
+                    running = False
+
+        # (Optional) fill background so you see the client window
+        screen.fill((50, 50, 50))
+        
+        pygame.draw.circle( screen,(128, 128, 128), CORE_REF_POS, CORE_REF_RADIUS, 2)   
+        pygame.display.flip()
+
+        pygame.time.wait(10)
+
+    sock.close()
+    pygame.quit()
+
+if __name__ == "__main__":
+    args = parse_args()
+    client_program(args.host, args.port)
