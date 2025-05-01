@@ -1,3 +1,8 @@
+# Vincenzo Cavallaro & Bridget Hammond
+# CCN: 4/28/2025
+# Bubble Wheel Server
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 import pygame
 import random
 import math
@@ -45,6 +50,7 @@ def server_thread(host='', port=5000):
         time.sleep(0.01)
 
     conn.close()
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 # Global Values
@@ -55,12 +61,11 @@ BUBBLE_DIAM = BUBBLE_RADIUS * 2
 VERTICAL_STEP = int(BUBBLE_RADIUS * math.sqrt(3))
 R_STEP = BUBBLE_DIAM
 
-
 #--- Game Constants ---
 LAUNCH_SPEED = 12
 CLOUD_RADIUS = 400
 CORE_RADIUS = 20
-penaltyBalls = []
+penaltybubbles = []
 
 ANGULAR_DAMPING = 0.98
 LAUNCHER_Y = SCREEN_H - 50
@@ -68,7 +73,7 @@ LAUNCHER_Y = SCREEN_H - 50
 # Precompute cloud center
 CENTER_X = SCREEN_W // 2
 CENTER_Y = SCREEN_H // 3
-
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 # Game Ending States
@@ -85,8 +90,6 @@ outcome     = None
 baseScore = 0
 stars = 0
 # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 
 
 # Assets and Constants
@@ -144,16 +147,8 @@ HIT_SOUND = None #pygame.mixer.Sound('assets/sounds/hit.wav')
 # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-
-
-
-
-
-
-
-
-
-# --- Bubble Class ---
+# Bubble Class
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class Bubble:
     def __init__(self, x, y, color):
         self.x, self.y = x, y
@@ -172,8 +167,11 @@ class Bubble:
             surf.blit(tex, (int(self.x - BUBBLE_RADIUS), int(self.y - BUBBLE_RADIUS)))
         else:
             pygame.draw.circle(surf, self.color, (int(self.x), int(self.y)), BUBBLE_RADIUS)
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-# --- Shatter Class ---
+
+# Shatter Class
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class ShatterParticle:
     def __init__(self, pos, vel, color, lifetime=1.0):
         self.x, self.y = pos
@@ -190,11 +188,13 @@ class ShatterParticle:
         if self.life > 0:
             r = int(CORE_RADIUS * (self.life))  # shrink over time
             pygame.draw.circle(surf, self.color, (int(self.x), int(self.y)), max(1,r))
-
 shatterParticles = []
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Core Render Functions
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def spawnShatter():
-    #SHATTER_SOUND.play()
     for i in range(6):
         ang = math.radians(60 * i + 30)
         x = CENTER_X + math.cos(ang) * CORE_RADIUS
@@ -203,13 +203,19 @@ def spawnShatter():
         speed = random.uniform(200, 300)
         vx, vy = math.cos(dir_ang) * speed, math.sin(dir_ang) * speed
         shatterParticles.append(ShatterParticle((x, y), (vx, vy), BLUE_COLOR, 1.0))
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Shatter Adjustment Function
 def updateShatterParticles(dt):
     for p in shatterParticles[:]:
         p.update(dt)
         if p.life <= 0:
             shatterParticles.remove(p)
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Create Core Function
 def drawCore(surf, angle):
     hexR = CORE_RADIUS
     
@@ -223,22 +229,26 @@ def drawCore(surf, angle):
     pygame.draw.polygon(tmp, col, pts)
 
       # Rotate the hexagon
-    rot = pygame.transform.rotate(tmp, math.degrees(-angle) + 30) # +30 to align with the surrounding balls
+    rot = pygame.transform.rotate(tmp, math.degrees(-angle) + 30) # +30 to align with the surrounding bubbles
 
     # Center the rotated hexagon
     rect = rot.get_rect(center=(CENTER_X, CENTER_Y))
 
     # Draw the rotated hexagon
     surf.blit(rot, rect)
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+# Collision Logic Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def handleCoreHit(b):
     if math.hypot(b.x - CENTER_X, b.y - CENTER_Y) < CORE_RADIUS:
-        spawnShatter()
         return True
     return False
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-# --- Utility Functions ---
+# Slot Position Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def worldPos(entry, angle, cx, cy):
     sin_a, cos_a = math.sin(angle), math.cos(angle)
     rx, ry = entry["slot"]["rx"], entry["slot"]["ry"]
@@ -246,18 +256,17 @@ def worldPos(entry, angle, cx, cy):
     y = cy + rx * sin_a + ry * cos_a
     return x, y
 
+
+# Empty Slot Generation Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def createSlots(gridRadius):
-    """
-    Builds a hexagon of slots using axial coordinates (q,r).
-    gridRadius = how many rings out from center you want.
-    """
     slots = []
     for q in range(-gridRadius, gridRadius + 1):
         for r in range(-gridRadius, gridRadius + 1):
             s = -q - r
             if abs(s) > gridRadius:
                 continue
-            # convert axial (q,r) to pixel offsets
+            # Convert Axis to Cartesian coordinates (Very Fun)
             rx = q * BUBBLE_DIAM + r * BUBBLE_RADIUS
             ry = r * VERTICAL_STEP
             slots.append({
@@ -269,10 +278,10 @@ def createSlots(gridRadius):
             })
     return slots
 
+
+# Seed Bubble Cloud Core Slots
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def seedInitialCloud(slots, initialRings=3):
-    """
-    Occupy every slot whose axial distance ≤ initialRings.
-    """
     cloud = []
     for slot in slots:
         q, r = slot["q"], slot["r"]
@@ -289,13 +298,10 @@ def seedInitialCloud(slots, initialRings=3):
             })
     return cloud
 
-def findNearestFreeSlot(slots, rxNew, ryNew):
-    """
-    Look only on ring, ring-1, ring+1 (in pixel‐based ring units),
-    and pick the nearest free slot.
-    """
-    import math
 
+# Identify Nearest Free Slot Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+def findNearestFreeSlot(slots, rxNew, ryNew):
     dist     = math.hypot(rxNew, ryNew)
     ringIdx  = int(round(dist / R_STEP))
     maxLocal = R_STEP * 2
@@ -307,33 +313,33 @@ def findNearestFreeSlot(slots, rxNew, ryNew):
             and abs(math.hypot(s["rx"], s["ry"]) - r * R_STEP) < (R_STEP / 2)
         ]
 
-    # try your ring, then one in / one out
+    # Ring slots are ordered by distance from center
     for r in (ringIdx, ringIdx - 1, ringIdx + 1):
         candidates = ringSlots(r)
         if not candidates:
             continue
 
-        # prefer truly local ones first
+        # Perfer a slot in the same ring (Causes bugs but works)
         local = [
             s for s in candidates
             if (s["rx"] - rxNew)**2 + (s["ry"] - ryNew)**2 < maxLocal**2
         ]
         use = local if local else candidates
 
-        # pick Cartesian‐closest
+        # Attempt secondary ring if no slots found
         return min(
             use,
             key=lambda s: (s["rx"] - rxNew)**2 + (s["ry"] - ryNew)**2
         )
 
-    # no slot nearby
+    # No slots found, already occupied or out of bounds. The game should be over very soon...
     return None
 
+
+# Idenify and Remove Clusters Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def findConnectedCluster(cloud, startIdx, worldPosFn):
-    """
-    DFS from the newly placed bubble at startIdx,
-    collecting only same-color neighbors.
-    """
+    #Neighborhood search
     N       = len(cloud)
     target  = cloud[startIdx]["color"]
     visited = {startIdx}
@@ -348,18 +354,16 @@ def findConnectedCluster(cloud, startIdx, worldPosFn):
             if v in visited or cloud[v]["color"] != target:
                 continue
             vx, vy = W[v]
-            # adjacent if centers < ~1.14*diameter
+            # Adjusted distance check to avoid floating point errors
             if math.hypot(ux - vx, uy - vy) < BUBBLE_DIAM * 1.14:
                 visited.add(v)
                 stack.append(v)
-
     return visited
 
+
+# Remove Cluster Index Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def removeClusterFromIndex(cloud, startIdx, worldPosFn, score):
-    """
-    Only remove the component containing startIdx (if size≥3).
-    Returns (newCloud, removedEntries, newScore).
-    """
     connected = findConnectedCluster(cloud, startIdx, worldPosFn)
     if len(connected) < 3:
         return cloud, [], score
@@ -369,21 +373,16 @@ def removeClusterFromIndex(cloud, startIdx, worldPosFn, score):
     for entry in removed:
         entry["slot"]["occupied"] = False
 
-    # rebuild survivors and update score
+    # rebuild the cloud without the removed entries. Adjust the slots and score
     newCloud = [e for i,e in enumerate(cloud) if i not in connected]
     score   += len(removed)
     return newCloud, removed, score
 
 def removeFloatingClusters(cloud, worldPosFn, score):
-    """
-    After cluster removal, drop any bubbles that cannot
-    trace a path back to the core.
-    """
-    import math
     N = len(cloud)
     W = [worldPosFn(e) for e in cloud]
 
-    # 1) build adjacency lists
+    # Build adjacency lists
     neigh = [set() for _ in range(N)]
     for i in range(N):
         xi, yi = W[i]
@@ -393,13 +392,13 @@ def removeFloatingClusters(cloud, worldPosFn, score):
                 neigh[i].add(j)
                 neigh[j].add(i)
 
-    # 2) find all bubbles touching the core
+    # Find all bubbles touching the core
     seeds = []
-    for i,(x,y) in enumerate(W):
+    for i, (x, y) in enumerate(W):
         if math.hypot(x - CENTER_X, y - CENTER_Y) < BUBBLE_DIAM * 1.1:
             seeds.append(i)
 
-    # 3) flood-fill from those seeds
+    # Flood-fill from those seeds
     reachable = set(seeds)
     stack     = seeds[:]
     while stack:
@@ -409,16 +408,26 @@ def removeFloatingClusters(cloud, worldPosFn, score):
                 reachable.add(v)
                 stack.append(v)
 
-    # 4) anything not in `reachable` is floating
+    # Anything not reachable is floating and removed
     floating = [cloud[i] for i in range(N) if i not in reachable]
     for e in floating:
         e["slot"]["occupied"] = False
-    survivors = [e for i,e in enumerate(cloud) if i in reachable]
-    score += len(floating)
+
+    # HUGE potential BUG here: Occupied slots can be overwritten and cause unwanted collisions
+    # (we should only overwrite slots that are not occupied by survivors) look through every slot referenced by BOTH survivors and floating entries)
+    for slot in (e["slot"] for e in cloud + floating):
+        if slot["q"] == 0 and slot["r"] == 0:
+            slot["occupied"] = True
+            break
+
+    # Rebuild and update score
+    survivors = [e for i, e in enumerate(cloud) if i in reachable]
+    score    += len(floating)
     return survivors, floating, score
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-# --- Physics Helpers ---
+# Physics Functions
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def handleWallAndCeilingBounce(b):
     # walls
     if b.x < BUBBLE_RADIUS or b.x > SCREEN_W - BUBBLE_RADIUS:
@@ -429,14 +438,16 @@ def handleWallAndCeilingBounce(b):
     if b.y < BUBBLE_RADIUS:
         b.vy *= -1
         b.y = BUBBLE_RADIUS
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Check if the launcher should be reset
 def shouldResetLauncher(b):
     return b.bounce_count > 3 or b.y > SCREEN_H
 
-def check_core_collision(b, cx, cy):
-    return math.hypot(b.x - cx, b.y - cy) < CORE_RADIUS
 
-def attach_to_cloud(b, cloud, slots, angle, cx, cy):
+# Attach to cloud function
+def attachToCloud(b, cloud, slots, angle, cx, cy):
     rel_x = b.x - cx
     rel_y = b.y - cy
     sin_a, cos_a = math.sin(-angle), math.cos(-angle)
@@ -453,7 +464,10 @@ def attach_to_cloud(b, cloud, slots, angle, cx, cy):
                 impulse = (rel_x * b.vy - rel_y * b.vx) * 0.00008
                 return cloud, impulse
     return cloud, 0.0
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Spawn falling bubbles
 def spawnFalling(fall_list, to_fall, angle, cx, cy):
     if to_fall:
         FALL_SOUND.play()
@@ -462,16 +476,18 @@ def spawnFalling(fall_list, to_fall, angle, cx, cy):
         nb = Bubble(fx, fy, e["color"])
         nb.falling = True
         fall_list.append(nb)
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-# --- Module Functions ---
+
+# Initialize Pygame assets and textures
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def init_pygame():
     pygame.init()
     pygame.font.init()
     pygame.mixer.init()
     
-    #
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
-    pygame.display.set_caption("Bubbles")
+    pygame.display.set_caption("Bubble Wheel Server")
     global star_empty_texture, star_full_texture, scoreFont  
 
     global SHATTER_SOUND, THUD_SOUND, FALL_SOUND, HIT_SOUND
@@ -489,16 +505,15 @@ def init_pygame():
     # Score Font Setup
     scoreFont = pygame.font.SysFont("Arial", 24)
     
-    
-# load textures
+    # Load textures
     for color, path in BUBBLE_TEXTURE_PATHS.items():
         try:
             img = pygame.image.load(path).convert_alpha()
             img = pygame.transform.scale(img, (BUBBLE_DIAM, BUBBLE_DIAM))
             bubble_textures[color] = img
             
-            # scale to half size for preview
-            # preview = half-diameter
+            # Scale to half size for preview
+            # Preview = half-diameter
             pv = pygame.transform.scale(img, (BUBBLE_RADIUS, BUBBLE_RADIUS))
             preview_textures[color] = pv
 
@@ -517,6 +532,8 @@ def init_pygame():
     clock = pygame.time.Clock()
     return screen, clock
 
+# Game Initialization
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def initGame():
     global initialBallCount
 
@@ -532,7 +549,6 @@ def initGame():
     angle = 0.0
     angVel = 5.0
     score = 0
-    nextB = Bubble(CENTER_X, LAUNCHER_Y, random.choice(COLORS))
     firing = False
     running = True
     initialCount = random.randint(3,7)
@@ -541,11 +557,10 @@ def initGame():
 
     # nextB should be the first color in the queue
     nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
-
-
-
     return slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue  
 
+# Input Processing Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def processInput(nextB, firing, cloud, ammoQueue):
     running = True
     for ev in pygame.event.get():
@@ -567,7 +582,11 @@ def processInput(nextB, firing, cloud, ammoQueue):
                     firing = True
     # ammoQueue is unchanged here
     return running, firing, nextB, ammoQueue
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Keyboard Input Function
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def handleKeyboard(nextB, firing, dt):
     keys = pygame.key.get_pressed()
     if keys[pygame.K_a]:
@@ -577,36 +596,36 @@ def handleKeyboard(nextB, firing, dt):
     if not firing:
         nextB.y = LAUNCHER_Y
     return nextB
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
+# Projectile Update Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def updateProjectile(
     nextB, firing, slots, cloud, falling,
     angle, angVel, score, ammoQueue                
 ):
-    
     nextB.update()
     handleWallAndCeilingBounce(nextB)
 
+    # reset launcher if too many bounces or out of bounds
     if shouldResetLauncher(nextB):
         firing = False
-
-        xtB = Bubble(CENTER_X, LAUNCHER_Y, nextB.color)
-        nextB.x, nextB.y      = CENTER_X, LAUNCHER_Y
-        nextB.vx, nextB.vy    = 0, 0
-        nextB.bounce_count    = 0
+        nextB.x, nextB.y   = CENTER_X, LAUNCHER_Y
+        nextB.vx, nextB.vy = 0, 0
+        nextB.bounce_count = 0
         return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
-    # When a Bubble hits the core: End The Game, Shatter Effect, and Score Calculation
+    # core‐hit check = end game
     if handleCoreHit(nextB):
         global gameOver, endTime, outcome, baseScore, stars
-        spawnShatter()                      # Trigger: Shard Effects
-        SHATTER_SOUND.play()                # Play:    Shatter Sound.mp3
-        outcome   = 'win'                   # Set:     Outcome to Win  
-        gameOver     = True                 # Set:     Game Over to True    
-        endTime   = pygame.time.get_ticks() 
-        baseScore    = score
+        spawnShatter()
+        SHATTER_SOUND.play()
+        outcome   = 'win'
+        gameOver  = True
+        endTime   = pygame.time.get_ticks()
+        baseScore = score
 
-        # compute stars (same logic you had at end)
         remaining = len(cloud)
         frac      = remaining / initialBallCount
         if remaining == 0:
@@ -617,47 +636,53 @@ def updateProjectile(
             stars = 1
         else:
             stars = 0
+
         return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
 
-
-    cloud, impulse = attach_to_cloud(
+    # try to attach to the cloud
+    before = len(cloud)
+    cloud, impulse = attachToCloud(
         nextB, cloud, slots, angle, CENTER_X, CENTER_Y
     )
-    if impulse:
+    attached = len(cloud) > before
+
+    if attached:
+        # even if impulse == 0.0, we know we hit
         angVel += impulse
-                # the new bubble is last in cloud
         HIT_SOUND.play()
+
+        # remove clusters
         startIdx = len(cloud) - 1
         worldFn  = lambda e: worldPos(e, angle, CENTER_X, CENTER_Y)
         cloud, toFall, score = removeClusterFromIndex(
             cloud, startIdx, worldFn, score
         )
-
         spawnFalling(falling, toFall, angle, CENTER_X, CENTER_Y)
 
         cloud, extraFall, score = removeFloatingClusters(
-            cloud,
-            lambda e: worldPos(e, angle, CENTER_X, CENTER_Y), 
-            score
+            cloud, worldFn, score
         )
-    
         spawnFalling(falling, extraFall, angle, CENTER_X, CENTER_Y)
 
-        # only consume one ammo if NOTHING was removed
+        # only consume ammo if nothing was removed
         if not toFall and not extraFall:
             ammoQueue.pop(0)
 
-        # if we ran out of ammo, refill
+        # refill ammo & spawn penalty bubbles if needed
         if not ammoQueue:
-            newCount     = random.randint(3,7)
+            newCount     = random.randint(3, 7)
             activeColors = [e["color"] for e in cloud] or COLORS
             ammoQueue    = [random.choice(activeColors) for _ in range(newCount)]
-            spawnPenaltyBalls(cloud, slots)
+            spawnPenaltybubbles(cloud, slots)
 
+        # prepare next shot
         firing = False
         nextB = Bubble(CENTER_X, LAUNCHER_Y, ammoQueue[0])
     return firing, nextB, slots, cloud, falling, angVel, score, ammoQueue
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+# Falling Bubbles Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def updateFalling(falling, dt):
     for b in falling[:]:
         b.vy += 400 * dt
@@ -667,11 +692,11 @@ def updateFalling(falling, dt):
             falling.remove(b)
     return falling
 
-def spawnPenaltyBalls(cloud, slots, speed=LAUNCH_SPEED):
-    """
-    Pick 3–9 balls from the current cloud colors,
-    launch them from the circle perimeter inward.
-    """
+
+# Gameplay Loop Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+def spawnPenaltybubbles(cloud, slots, speed=LAUNCH_SPEED):
+    #Pick 3–9 bubbles from the current cloud colors
     count = random.randint(3, 9)
     active = [e["color"] for e in cloud] or COLORS
     for _ in range(count):
@@ -684,20 +709,19 @@ def spawnPenaltyBalls(cloud, slots, speed=LAUNCH_SPEED):
         b = Bubble(x0, y0, color)
         b.vx = dx/mag * speed
         b.vy = dy/mag * speed
-        penaltyBalls.append(b)
+        penaltybubbles.append(b)
 
-def updatePenaltyBalls(slots, cloud, angle):
-    """
-    Move penaltyBalls toward center, and attach them to the cloud
-    on first collision (no cluster removal).
-    """
-    for b in penaltyBalls[:]:
+# Position Penalty Bubbles
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+def updatePenaltybubbles(slots, cloud, angle):
+    # Move bubbles toward center, and attach them to the cloud
+    for b in penaltybubbles[:]:
         b.update()
-        # check collision against every existing bubble in cloud
+        # Check collision against every existing bubble in cloud
         for entry in cloud:
             sx, sy = worldPos(entry, angle, CENTER_X, CENTER_Y)
             if math.hypot(b.x - sx, b.y - sy) < BUBBLE_DIAM:
-                # attach without clearing clusters
+                # Attach without clearing clusters
                 rel_x, rel_y = b.x - CENTER_X, b.y - CENTER_Y
                 sin_a, cos_a = math.sin(-angle), math.cos(-angle)
                 rx_new = rel_x*cos_a - rel_y*sin_a
@@ -709,16 +733,20 @@ def updatePenaltyBalls(slots, cloud, angle):
                     HIT_SOUND.play()
                 break
         else:
-            # not collided yet
+            # Not collided yet
             continue
-        # if we did collide, remove from penaltyBalls
-        penaltyBalls.remove(b)
+        # And if we did collide, remove from penaltybubbles
+        penaltybubbles.remove(b)
 
+# Main Gameplay Mechanic Functions
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def update_rotation(angle, angVel):
     angle += angVel
     angVel *= ANGULAR_DAMPING
     return angle, angVel
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+# Draw Stars Function
 def show_stars(screen, star_count):
     # Draw 3 star slots in the center
     if not (star_empty_texture and star_full_texture):
@@ -746,17 +774,16 @@ def show_stars(screen, star_count):
         screen.blit(tex, (tx, y))
         pygame.display.flip()
         pygame.time.delay(300)
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
+# Draw Score Function
 def drawScore(screen, score):
     txt = scoreFont.render(f"Score: {score}", True, (255,255,255))
     screen.blit(txt, (10, SCREEN_H - txt.get_height() - 10))
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def debugPrintFinalScore(baseScore, stars, finalScore):
-    print(f"Game Over! You earned {stars} star{'s' if stars != 1 else ''}.")
-    print(f"Base Score: {baseScore}  Final Score: {finalScore} ({max(1, stars)}×)")
-
-
+# Main Creation Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def draw(screen, cloud, falling, nextB, angle, ammoQueue, score):
     screen.fill((30, 30, 30))
 
@@ -776,7 +803,7 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue, score):
 
     drawCore(screen, angle)
 
-    # 4) draw any shatter fragments
+    # Shatter particles
     for p in shatterParticles:
         p.draw(screen)
 
@@ -804,69 +831,19 @@ def draw(screen, cloud, falling, nextB, angle, ammoQueue, score):
         else:
             pygame.draw.circle(screen, col, (int(px), int(py)), previewR)
 
-    for b in penaltyBalls:
+    for b in penaltybubbles:
         b.draw(screen)
 
     # live score HUD
     drawScore(screen, score)
-    if net_mouse_pos:
-        mx, my = net_mouse_pos
-        dot = pygame.Surface((10,10), pygame.SRCALPHA)
-        pygame.draw.circle(dot, (128,128,128,128), (5,5), 5)
-        screen.blit(dot, (mx-5, my-5))
-        
+    drawRemoteCursor(screen)
+
     pygame.display.flip()
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-
-
-# --- Game Over Logic ---
-def show_end_sequence(screen, baseScore, stars):
-    # Darken background behind
-    pygame.font.init()
-    font = pygame.font.SysFont(None, 64)
-    small = pygame.font.SysFont(None, 48)
-
-    # dark overlay
-    overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-    overlay.fill((0,0,0,200))
-    screen.blit(overlay, (0,0))
-
-    # initial score text
-    txt = font.render(f"Score: {baseScore}", True, (255,255,255))
-    rect = txt.get_rect(center=(SCREEN_W//2, SCREEN_H//2 - 100))
-    screen.blit(txt, rect)
-    pygame.display.flip()
-    pygame.time.delay(800)
-
-    final = 0
-    # reveal stars one at a time
-    w,h      = star_full_texture.get_size()
-    spacing  = w + 20
-    total_w  = spacing*2 + w
-    start_x  = (SCREEN_W - total_w)//2
-    y        = SCREEN_H//2
-
-    for i in range(stars):
-        # draw stars row
-        for j in range(3):
-            tex = star_full_texture if j <= i else star_empty_texture
-            x = start_x + j*spacing
-            screen.blit(tex, (x, y))
-        # update and draw multiplied score
-        final = baseScore * (i+1)
-        txt2 = small.render(f"× {i+1} apple {final}", True, (255,255,255))
-        r2   = txt2.get_rect(center=(SCREEN_W//2, SCREEN_H//2 + 100))
-        screen.blit(txt2, r2)
-
-        pygame.display.flip()
-        pygame.time.delay(800)
-
-        
-    # hold for a moment before quitting
-    pygame.time.delay(1200)
-
+# Game Over Sequences
 def revealOutcome(screen, outcome, baseScore, stars, finalScore):
-    # 1) Fade to black
+    # Fade to black
     fade = pygame.Surface((SCREEN_W, SCREEN_H))
     for alpha in range(0, 256, 8):
         fade.set_alpha(alpha)
@@ -875,7 +852,7 @@ def revealOutcome(screen, outcome, baseScore, stars, finalScore):
         pygame.display.flip()
         pygame.time.delay(30)
 
-    # 2) Draw the outcome text & stars
+    # Draw the outcome text & stars
     pygame.font.init()
     titleF = pygame.font.SysFont(None, 80)
     smallF = pygame.font.SysFont(None, 48)
@@ -885,7 +862,7 @@ def revealOutcome(screen, outcome, baseScore, stars, finalScore):
     rT = txtT.get_rect(center=(SCREEN_W//2, SCREEN_H//2 - 150))
     screen.blit(txtT, rT)
 
-    # stars row
+    # Star Row
     w, h = star_full_texture.get_size()
     spacing = w + 20
     total_w = spacing * 2 + w
@@ -895,27 +872,28 @@ def revealOutcome(screen, outcome, baseScore, stars, finalScore):
         tex = star_full_texture if i < stars else star_empty_texture
         screen.blit(tex, (start_x + i*spacing, y_star))
 
-    # final score
+    # Final score
     txtF = smallF.render(f"Final Score: {finalScore}", True, (255, 255, 255))
     rF = txtF.get_rect(center=(SCREEN_W//2, SCREEN_H//2 + 100))
     screen.blit(txtF, rF)
 
-    # 3) **Flip** to show it
+    # Show Scene
     pygame.display.flip()
 
-    # 4) Hold for ten seconds (or until input)
+    # Delay (Ten Seconds)
     start = pygame.time.get_ticks()
     while pygame.time.get_ticks() - start < 10000:
         for ev in pygame.event.get():
             if ev.type in (pygame.QUIT, pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
                 return
         pygame.time.delay(50)
-# ----------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+# Network Input Processing
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def processRemoteInput(nextB, firing):
     global net_mouse_pos
-
-    while not net_input.empty():
+    if not net_input.empty():
         cmd = net_input.get().strip()
         if cmd == 'A':
             nextB.x = max(BUBBLE_RADIUS, nextB.x - 5)
@@ -924,40 +902,47 @@ def processRemoteInput(nextB, firing):
             nextB.x = min(SCREEN_W - BUBBLE_RADIUS, nextB.x + 5)
 
         elif cmd.startswith('MOUSEMOVE:'):
-            # just update cursor
+            # Update cursor
             try:
-                _, coords = cmd.split(':',1)
-                mx, my    = map(int, coords.split(',',1))
+                _, coords     = cmd.split(':', 1)
+                mx, my        = map(int, coords.split(',', 1))
                 net_mouse_pos = (mx, my)
-            except:
-                continue
-
+            except ValueError:
+                pass
+        
         elif cmd.startswith('MOUSECLICK:'):
-            # update cursor + fire a shot
+            # Update Firing
             try:
-                _, coords = cmd.split(':',1)
-                mx, my    = map(int, coords.split(',',1))
+                _, coords     = cmd.split(':', 1)
+                mx, my        = map(int, coords.split(',', 1))
                 net_mouse_pos = (mx, my)
-            except:
-                continue
-
-            if not firing:
-                dx, dy = mx - nextB.x, my - nextB.y
-                mag    = math.hypot(dx, dy) or 1
-                nextB.vx = dx / mag * LAUNCH_SPEED
-                nextB.vy = dy / mag * LAUNCH_SPEED
-                firing   = True
-
+           
+            except ValueError:
+                pass
+            else:
+                if not firing:
+                    dx, dy       = mx - nextB.x, my - nextB.y
+                    mag          = math.hypot(dx, dy) or 1
+                    nextB.vx     = dx / mag * LAUNCH_SPEED
+                    nextB.vy     = dy / mag * LAUNCH_SPEED
+                    firing       = True
     return nextB, firing
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+# Draw Remote Cursor Function
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def drawRemoteCursor(screen):
     if net_mouse_pos:
         mx, my = net_mouse_pos
         dot = pygame.Surface((10,10), pygame.SRCALPHA)
         pygame.draw.circle(dot, (128,128,128,128), (5,5), 5)
         screen.blit(dot, (mx-5, my-5))
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
+# Main Initialization
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def main():
     global gameOver, baseScore, stars, endTime, outcome
     screen, clock = init_pygame()
@@ -968,7 +953,6 @@ def main():
         while not client_connected:
             print("Waiting for network client…")            # Ctrl+C: Exit Search
             time.sleep(5.0)
-    
     
     # Initialize: Game State
     slots, cloud, falling, angle, angVel, score, nextB, firing, running, ammoQueue = initGame()
@@ -983,63 +967,24 @@ def main():
 
         # Display: Special Effects
         updateShatterParticles(dt)
-            # —  Display: Game Over Sequence  — 
         if gameOver:
-            # 1) ensure endTime is set exactly once
+            # ensure endTime is set exactly once
             if endTime is None:
                 endTime = pygame.time.get_ticks()
 
-            # 2) draw the static game-over frame
-            screen.fill((30, 30, 30))
-            if outcome == 'win':
-                drawCore(screen, angle)
-                for p in shatterParticles:
-                    p.draw(screen)
-            else:
-                for e in cloud:
-                    x, y = worldPos(e, angle, CENTER_X, CENTER_Y)
-                    tex = bubble_textures.get(e["color"])
-                    if tex:
-                        screen.blit(tex, (int(x - BUBBLE_RADIUS), int(y - BUBBLE_RADIUS)))
-                    else:
-                        pygame.draw.circle(screen, e["color"], (int(x), int(y)), BUBBLE_RADIUS)
-                drawCore(screen, angle)
-
+        # Draw the final still frame
+            draw(screen, cloud, falling, nextB, angle, ammoQueue, score)
             drawRemoteCursor(screen)
             pygame.display.flip()
 
-            # 3) after 2s, show the final outcome once
+        # After two seconds: reveal the outcome and exit
             if pygame.time.get_ticks() - endTime > 2000:
                 finalScore = baseScore * max(1, stars)
                 revealOutcome(screen, outcome, baseScore, stars, finalScore)
                 running = False
-
-            # 4) don’t run any other logic until we quit
             continue
 
-    
-                
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        # c) input
+        # Inputs
         running, firing, nextB, ammoQueue = processInput(nextB, firing, cloud, ammoQueue)
         nextB = handleKeyboard(nextB, firing, dt)
 
@@ -1049,18 +994,16 @@ def main():
             if activeColors and nextB.color not in activeColors:
                 nextB.color = random.choice(activeColors)
 
-        # e) firing & attachment logic
+        # Firing and Projectile Updates
         if firing:
             firing, nextB, slots, cloud, falling, angVel, score, ammoQueue = \
                 updateProjectile(nextB, firing, slots, cloud, falling, angle, angVel, score, ammoQueue)
 
-        # f) physics updates
+        # Physics Updates
         falling = updateFalling(falling, dt)
         angle, angVel = update_rotation(angle, angVel)
 
-        # g) boundary‐hit: Trigger Game Over
-        # Check if any bubble is outside the screen bounds
-        
+        # Boundary Check: Cloud
         for e in cloud:
             x, y = worldPos(e, angle, CENTER_X, CENTER_Y)
             if (x - BUBBLE_RADIUS <= 0 or x + BUBBLE_RADIUS >= SCREEN_W
@@ -1084,13 +1027,12 @@ def main():
         if gameOver:
             continue
 
-        # h) penalty balls
-        updatePenaltyBalls(slots, cloud, angle)
+        # Send Penalty Bubbles
+        updatePenaltybubbles(slots, cloud, angle)
 
-        # i) final draw (cloud, core, bubbles, launcher, score HUD…)
+        # Finish Drawing
         draw(screen, cloud, falling, nextB, angle, ammoQueue, score)
     pygame.quit()
-
 
 if __name__ == "__main__":
     main()
